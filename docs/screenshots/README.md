@@ -1,5 +1,5 @@
-Screenshots still needed (capture on a clean demo profile, no personal sessions, paths or project names):
-1. bot-chat-working.png - Bot Chat with the "Working… · Reading files" bar.
-2. bot-chat-answer.png  - Bot Chat final short answer, reasoning collapsed.
-3. guard-blocked.png    - a blocked `git push origin main` with the approval line.
-4. other-session.png    - a normal session, unchanged.
+Screenshots captured on a clean, temporary demo profile (no personal data).
+
+- 01-loading.png: Bot Chat while working (status bar).
+- 02-answer.png: full answer, reasoning collapsed.
+- 03-short-answer.png: short, direct answer.

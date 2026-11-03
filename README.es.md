@@ -2,51 +2,62 @@
 
 [English](README.md)
 
-Hace que la **sesión canónica "Bot Chat"** de un bot (Bot Mode / hermes-bots) se sienta como un asistente
-enfocado, sin cambiar ninguna otra sesión, perfil ni el núcleo.
+> Un Bot Chat de Hermes más tranquilo y simple, para quien solo quiere respuestas.
 
-| Capa | Qué hace |
+## Por qué existe
+
+Hermes es muy potente, y esa potencia se ve en pantalla: bloques de razonamiento, tarjetas de herramientas,
+diffs, logs, preguntas de seguimiento. Para un desarrollador eso está genial. Para mucha gente (estudiantes,
+emprendedores, familia, cualquiera que no sea técnico) puede ser abrumador.
+
+**Bot Chat Agent** les da un Bot Chat de Hermes más amable: preguntas, ves una barra discreta de
+*"Cargando…"* y recibes una respuesta corta y directa. Menos cosas en pantalla, menos preguntas, el mismo
+Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: queda exactamente igual.
+
+## Capturas
+
+| Cargando | Respuesta | Corto y directo |
+|---|---|---|
+| ![Barra de carga](docs/screenshots/01-loading.png) | ![Respuesta, razonamiento colapsado](docs/screenshots/02-answer.png) | ![Respuesta corta](docs/screenshots/03-short-answer.png) |
+
+## Qué hace
+
+| Capa | Qué cambia |
 |---|---|
-| Estilo (`pre_llm_call`) | Añade un contrato corto de "actúa, no narres": acuse breve, trabajo, resultado corto; máximo una pregunta por turno. |
-| Guardia (`pre_tool_call`) | **Bloquea** llamadas riesgosas y le indica al modelo que te pregunte primero. Nunca aprueba nada. |
-| Desktop | Una barra discreta "Cargando… · Leyendo archivos" sobre el compositor y el razonamiento colapsado por defecto mientras una Bot Chat está enfocada. Las tarjetas de aprobación no se tocan. |
+| Estilo (`pre_llm_call`) | Un contrato corto de "actúa, no narres": acuse breve, hace el trabajo, resultado corto. Máximo una pregunta por turno. |
+| Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros) y te pregunta primero. Nunca aprueba nada por ti. |
+| Desktop | Una barra discreta "Cargando…" sobre el cuadro de texto y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de aprobación no se tocan. |
 
-Solo afecta a sesiones con título **"Bot Chat"** (el que usa Bot Mode de Hermes) y sus hijas por compactación.
-Los subagentes y el resto de sesiones se comportan igual que antes.
-
-## Requisitos
-Hermes `>= 0.22.5`.
+Solo afecta a las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación.
+Las sesiones normales, los subagentes y los perfiles siguen igual.
 
 ## Instalar
+
+Requiere Hermes `>= 0.22.5`.
+
 ```bash
-hermes plugins install Tormen28/hermes-bot-chat-agent   # o copia esta carpeta a ~/.hermes/plugins/bot-chat-agent
+hermes plugins install Tormen28/hermes-bot-chat-agent
 hermes plugins enable bot-chat-agent
 ```
 Desktop: **Capacidades → Plugins → Bot Chat Agent** → activar. Reinicia la app si no aparece.
+Luego abre **Bots**, elige un bot y chatea.
 
 ## Desactivar / desinstalar
+
 ```bash
 hermes plugins disable bot-chat-agent
 hermes plugins remove bot-chat-agent
 ```
-Al desactivar la parte Desktop se restaura tu ajuste previo de "colapsar razonamiento".
+O apágalo en **Capacidades → Plugins**. Al desactivarlo se restaura tu ajuste anterior de "colapsar razonamiento".
 
-## Configuración
-Ver el bloque YAML en [README.md](README.md#configuration). Para mensajes en español: `language: es`.
+## Configuración y privacidad
 
-## Reglas de la guardia
-secretos, borrados, git destructivo, push/merge a ramas protegidas (`main`, `master` por defecto), envíos al
-exterior y modelos caros. Cada regla se puede apagar por separado. Es una red de seguridad por patrones, no un
-sandbox: mantén activadas las aprobaciones propias de Hermes.
+La configuración (`language: es` para respuestas en español), las reglas de la guardia y las divulgaciones
+están detalladas arriba en inglés. En resumen: lee `state.db` **solo en modo lectura** para encontrar los Bot Chat,
+nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no envía telemetría.
 
-## Divulgaciones
-- Lee `<HERMES_HOME>/state.db` **solo lectura** para identificar las sesiones Bot Chat. Nunca escribe.
-- Nunca lee `.env`, `auth.json` ni credenciales. Sin red. Sin telemetría.
-- Desktop: cambia `reasoning.collapsedByDefault` mientras una Bot Chat está enfocada y lo restaura al salir.
-
-## Limitación conocida
-El SDK público de Desktop puede colapsar el razonamiento pero no ocultar las tarjetas de herramientas por sesión.
-Para eso hace falta un hook nuevo del SDK (se pedirá a Nous).
+**Limitación conocida:** el SDK público de Desktop puede colapsar el razonamiento pero aún no puede ocultar las
+tarjetas de herramientas por sesión, así que esas tarjetas siguen visibles en Bot Chat.
 
 ## Licencia
 MIT. Ver [LICENSE](LICENSE).

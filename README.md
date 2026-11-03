@@ -1,35 +1,56 @@
 # Bot Chat Agent for Hermes
 
-[Español](README.es.md)
+**English** · [Español](#español)
 
-Makes a bot's **canonical "Bot Chat" session** (Bot Mode / hermes-bots) feel like a focused assistant,
-without changing any other session, profile or the core.
+> A calmer, simpler Hermes Bot Chat for people who just want answers.
 
-| Layer | What it does |
+## Why this exists
+
+Hermes is powerful, and that power shows on screen: reasoning blocks, tool cards, diffs, logs, follow-up questions.
+For developers that is great. For many people (students, small business owners, family members, anyone
+who is not technical) it can feel overwhelming.
+
+**Bot Chat Agent** gives them a friendlier Hermes Bot Chat: you ask, you see a quiet *"Working…"* bar,
+and you get a short, direct answer. Less on screen, fewer questions, the same Hermes underneath.
+If you want every detail, open a normal session: it stays exactly as it was.
+
+## Screenshots
+
+| Working | Answer | Short and direct |
+|---|---|---|
+| ![Working bar](docs/screenshots/01-loading.png) | ![Answer, reasoning collapsed](docs/screenshots/02-answer.png) | ![Short answer](docs/screenshots/03-short-answer.png) |
+
+*(Captured on a clean demo profile; the Desktop UI was in Spanish, so the bar reads "Cargando… · Pensando…".)*
+
+## What it does
+
+| Layer | What changes |
 |---|---|
-| Style (`pre_llm_call`) | Adds a short "act, don't narrate" contract: brief acknowledgement, work, short result; at most one question per turn. |
-| Safety guard (`pre_tool_call`) | **Blocks** risky tool calls and tells the model to ask you first. It never approves anything. |
-| Desktop | A quiet "Working… · Reading files" bar above the composer, and reasoning collapsed by default while a Bot Chat is focused. Approval cards are untouched. |
+| Style (`pre_llm_call`) | A short "act, don't narrate" contract: brief acknowledgement, do the work, short result. At most one question per turn. |
+| Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models) and asks you first. It never approves anything. |
+| Desktop | A quiet "Working…" bar above the composer, and reasoning collapsed by default while a Bot Chat is focused. Approval cards are untouched. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children are affected.
-Subagent sessions and every other session behave exactly as before.
-
-## Requirements
-Hermes `>= 0.22.5`.
+Normal sessions, subagents and profiles behave exactly as before.
 
 ## Install
+
+Requires Hermes `>= 0.22.5`.
+
 ```bash
-hermes plugins install Tormen28/hermes-bot-chat-agent   # or copy this folder to ~/.hermes/plugins/bot-chat-agent
+hermes plugins install Tormen28/hermes-bot-chat-agent
 hermes plugins enable bot-chat-agent
 ```
 Desktop: **Capabilities → Plugins → Bot Chat Agent** → enable. Restart the Desktop app if it does not appear.
+Then open **Bots**, pick a bot and chat.
 
 ## Disable / uninstall
+
 ```bash
 hermes plugins disable bot-chat-agent
 hermes plugins remove bot-chat-agent
 ```
-Disabling the Desktop part restores your previous "collapse reasoning" setting.
+Or switch it off in **Capabilities → Plugins**. Disabling restores your previous "collapse reasoning" setting.
 
 ## Configuration
 In `config.yaml` (all optional; defaults shown):
@@ -76,7 +97,7 @@ The guard is a safety net based on patterns, not a sandbox. Keep Hermes's own ap
 
 ## Known limitation
 The public Desktop SDK can collapse reasoning but cannot hide tool cards per session. Full "answer-only" display
-needs a new SDK hook (a feature request to Nous is planned). Until then tool cards still show in Bot Chat.
+needs a new Desktop SDK hook (proposed upstream). Until then tool cards still show in Bot Chat.
 
 ## Development
 ```bash
@@ -86,3 +107,67 @@ hermes plugins validate . --install-deps
 
 ## License
 MIT. See [LICENSE](LICENSE).
+
+---
+
+## Español
+
+> Un Bot Chat de Hermes más tranquilo y simple, para quien solo quiere respuestas.
+
+### Por qué existe
+
+Hermes es muy potente, y esa potencia se ve en pantalla: bloques de razonamiento, tarjetas de herramientas,
+diffs, logs, preguntas de seguimiento. Para un desarrollador eso está genial. Para mucha gente (estudiantes,
+emprendedores, familia, cualquiera que no sea técnico) puede ser abrumador.
+
+**Bot Chat Agent** les da un Bot Chat de Hermes más amable: preguntas, ves una barra discreta de
+*"Cargando…"* y recibes una respuesta corta y directa. Menos cosas en pantalla, menos preguntas, el mismo
+Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: queda exactamente igual.
+
+### Capturas
+
+| Cargando | Respuesta | Corto y directo |
+|---|---|---|
+| ![Barra de carga](docs/screenshots/01-loading.png) | ![Respuesta, razonamiento colapsado](docs/screenshots/02-answer.png) | ![Respuesta corta](docs/screenshots/03-short-answer.png) |
+
+### Qué hace
+
+| Capa | Qué cambia |
+|---|---|
+| Estilo (`pre_llm_call`) | Un contrato corto de "actúa, no narres": acuse breve, hace el trabajo, resultado corto. Máximo una pregunta por turno. |
+| Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros) y te pregunta primero. Nunca aprueba nada por ti. |
+| Desktop | Una barra discreta "Cargando…" sobre el cuadro de texto y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de aprobación no se tocan. |
+
+Solo afecta a las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación.
+Las sesiones normales, los subagentes y los perfiles siguen igual.
+
+### Instalar
+
+Requiere Hermes `>= 0.22.5`.
+
+```bash
+hermes plugins install Tormen28/hermes-bot-chat-agent
+hermes plugins enable bot-chat-agent
+```
+Desktop: **Capacidades → Plugins → Bot Chat Agent** → activar. Reinicia la app si no aparece.
+Luego abre **Bots**, elige un bot y chatea.
+
+### Desactivar / desinstalar
+
+```bash
+hermes plugins disable bot-chat-agent
+hermes plugins remove bot-chat-agent
+```
+O apágalo en **Capacidades → Plugins**. Al desactivarlo se restaura tu ajuste anterior de "colapsar razonamiento".
+
+### Configuración y privacidad
+
+La configuración (`language: es` para respuestas en español), las reglas de la guardia y las divulgaciones
+están detalladas arriba en inglés. En resumen: lee `state.db` **solo en modo lectura** para encontrar los Bot Chat,
+nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no envía telemetría.
+
+**Limitación conocida:** el SDK público de Desktop puede colapsar el razonamiento pero aún no puede ocultar las
+tarjetas de herramientas por sesión, así que esas tarjetas siguen visibles en Bot Chat.
+
+### Licencia
+MIT. Ver [LICENSE](LICENSE).
