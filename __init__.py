@@ -205,8 +205,14 @@ _DELETE_RE = re.compile(
     r"\bfind\b[^\n]*\s-delete\b|\bgit\s+rm\b|"
     r"\bDROP\s+(TABLE|DATABASE|SCHEMA)\b|\bTRUNCATE\s+TABLE\b|\bDELETE\s+FROM\b|"
     r"shutil\.rmtree|os\.remove|os\.unlink|\.unlink\()", re.I)
+# Short options before a git subcommand. The alternatives are disjoint
+# (`-C`/`-c <arg>` vs every other short option) and the repeat is bounded:
+# an overlapping unbounded group backtracks exponentially on `git -C -C …`
+# and stalls the hook, which holds the GIL so a hook timeout cannot stop it.
+_GIT_OPT_PREFIX = r"(?:-[Cc]\s+\S+\s+|-(?![Cc]\s)\S+\s+){0,8}"
 _GIT_DESTRUCTIVE_RE = re.compile(
-    r"\bgit\s+(?:-[Cc]\s+\S+\s+|-[^\s]+\s+)*(push\s+[^\n]*(--force\b|-f\b|--force-with-lease)|reset\s+--hard|clean\s+-\w*f|"
+    r"\bgit\s+" + _GIT_OPT_PREFIX +
+    r"(push\s+[^\n]*(--force\b|-f\b|--force-with-lease)|reset\s+--hard|clean\s+-\w*f|"
     r"branch\s+-D|checkout\s+--\s|restore\s+[^\n]*--source|rebase\b|filter-branch|"
     r"push\s+[^\n]*--delete|reflog\s+expire|gc\s+--prune|stash\s+(?:drop|clear)\b)", re.I)
 
@@ -216,7 +222,10 @@ def _protected_push(cmd: str) -> bool:
     if not branches:
         return False
     alt = "|".join(branches)
-    if re.search(rf"\bgit\s+(?:-[Cc]\s+\S+\s+|-[^\s]+\s+)*push\b[^\n]*(?:\s|:|refs/heads/|origin/)({alt})(?=\s|$|[;&|)])", cmd, re.I):
+    if re.search(
+            r"\bgit\s+" + _GIT_OPT_PREFIX +
+            rf"push\b[^\n]*(?:\s|:|refs/heads/|origin/)({alt})(?=\s|$|[;&|)])",
+            cmd, re.I):
         return True
     if re.search(rf"\bgit\s+merge\b", cmd, re.I) and re.search(
             rf"\bgit\s+(checkout|switch)\s+({alt})\b", cmd, re.I):

@@ -32,6 +32,7 @@ If you want every detail, open a normal session: it stays exactly as it was.
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children are affected.
 Normal sessions, subagents and profiles behave exactly as before.
+The guard skips subagent sessions, so `delegate_task` children of a Bot Chat are not covered.
 
 ## Install
 
@@ -140,6 +141,7 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 
 Solo afecta a las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación.
 Las sesiones normales, los subagentes y los perfiles siguen igual.
+La guardia omite las sesiones de subagente, así que los hijos `delegate_task` de un Bot Chat no quedan cubiertos.
 
 ### Instalar
 
