@@ -272,7 +272,8 @@ class TestDesktopSdkOnly(unittest.TestCase):
     def test_status_bar_phases_present(self):
         js = (ROOT / "desktop" / "plugin.js").read_text(encoding="utf-8")
         for expected in ("Working…", "Waiting for your OK", "Esperando tu OK", "classifyPhase", "shortError",
-                         "waiting_ok", "working", "error"):
+                         "waiting_ok", "working", "error", "Waiting on", "Esperando a", "Done ·", "Listo ·",
+                         "waiting_team", "applyTeamEvent"):
             self.assertIn(expected, js, expected)
 
     def test_status_bar_phase_logic_via_node(self):
@@ -301,6 +302,17 @@ assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: true, blocke
 assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: false, blocked: true, detail: '' }), { active: true, phase: 'waiting_ok', blocked: true, text: 'Esperando tu OK' });
 assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: false, error: 'Connection reset by peer\\nstack trace' }), { active: true, phase: 'error', blocked: false, text: 'Error: Connection reset by peer' });
 assert.strictEqual(shortError('[bot-chat-agent] Blocked: x\\nline2', 20), 'Blocked: x');
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: true, teamWait: 'researcher' }), { active: true, phase: 'waiting_team', blocked: false, text: 'Waiting on researcher' });
+assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: false, teamWait: 'investigator' }), { active: true, phase: 'waiting_team', blocked: false, text: 'Esperando a investigator' });
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: false, notice: 'Ship the patch' }), { active: true, phase: 'done', blocked: false, text: 'Done · Ship the patch' });
+assert.strictEqual(classifyPhase('en', { inBotChat: true, blocked: true, detail: '', teamWait: 'researcher' }).phase, 'waiting_ok');
+assert.strictEqual(classifyPhase('en', { inBotChat: false, notice: 'Ship the patch' }).phase, 'idle');
+const created = applyTeamEvent({ teamWait: '', notice: 'old' }, 'tool', { name: 'kanban_create', assignee: 'researcher' });
+assert.strictEqual(created.teamWait, 'researcher');
+assert.strictEqual(created.notice, '');
+const done = applyTeamEvent({ teamWait: 'researcher', notice: '' }, 'kanban_task_completed', { assignee: 'researcher', summary: 'Ship the patch' });
+assert.strictEqual(done.teamWait, '');
+assert.strictEqual(done.notice, 'Ship the patch');
 console.log('NODE_OK');
 """
         proc = subprocess.run([node, "-e", harness], capture_output=True, text=True, timeout=5)
@@ -318,8 +330,9 @@ class TestPackaging(unittest.TestCase):
     def test_manifest(self):
         y = (ROOT / "plugin.yaml").read_text(encoding="utf-8")
         self.assertRegex(y, r'requires_hermes:\s*">=0\.22\.5"')
-        for h in ("pre_llm_call", "pre_tool_call"):
+        for h in ("pre_llm_call", "pre_tool_call", "post_tool_call", "kanban_task_completed"):
             self.assertIn(h, y)
+        self.assertRegex(y, r"version:\s*0\.3\.0-dev")
 
 
 if __name__ == "__main__":
