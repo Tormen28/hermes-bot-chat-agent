@@ -11,26 +11,34 @@ const I18N = {
     working: 'Working…',
     thinking: 'Thinking…',
     blocked: 'Waiting for your OK',
-    error: 'Error'
+    error: 'Error',
+    waitingTeam: 'Waiting on',
+    done: 'Done ·'
   },
   es: {
     working: 'Cargando…',
     thinking: 'Pensando…',
     blocked: 'Esperando tu OK',
-    error: 'Error'
+    error: 'Error',
+    waitingTeam: 'Esperando a',
+    done: 'Listo ·'
   }
 }
 const TOOL_LABELS = {
   en: {
     read_file: 'Reading files', write_file: 'Saving changes', patch: 'Editing a file',
     search_files: 'Searching the code', terminal: 'Running a command', execute_code: 'Running a script',
-    web_search: 'Searching the web', web_extract: 'Reading a web page', delegate_task: 'Coordinating a helper',
+    web_search: 'Searching the web', web_extract: 'Reading a web page',     delegate_task: 'Coordinating a helper',
+    kanban_create: 'Assigning a teammate', kanban_list: 'Checking the board',
+    kanban_show: 'Reading a card', kanban_complete: 'Closing a card',
     session_search: 'Checking past sessions', memory: 'Updating memory', clarify: 'Waiting for your OK'
   },
   es: {
     read_file: 'Leyendo archivos', write_file: 'Guardando cambios', patch: 'Editando un archivo',
     search_files: 'Buscando en el código', terminal: 'Ejecutando un comando', execute_code: 'Ejecutando un script',
-    web_search: 'Buscando en la web', web_extract: 'Leyendo una página', delegate_task: 'Coordinando un ayudante',
+    web_search: 'Buscando en la web', web_extract: 'Leyendo una página',     delegate_task: 'Coordinando un ayudante',
+    kanban_create: 'Asignando a un compañero', kanban_list: 'Revisando el tablero',
+    kanban_show: 'Leyendo una tarjeta', kanban_complete: 'Cerrando una tarjeta',
     session_search: 'Consultando sesiones', memory: 'Actualizando memoria', clarify: 'Esperando tu OK'
   }
 }
@@ -75,6 +83,23 @@ export function classifyPhase(lang, state) {
       text: detail ? `${t.error}: ${detail}` : t.error
     }
   }
+  if (s.teamWait) {
+    return {
+      active: true,
+      phase: 'waiting_team',
+      blocked: false,
+      text: `${t.waitingTeam} ${s.teamWait}`
+    }
+  }
+  if (s.notice && !s.busy) {
+    const detail = shortError(s.notice, 60)
+    return {
+      active: true,
+      phase: 'done',
+      blocked: false,
+      text: detail ? `${t.done} ${detail}` : t.done
+    }
+  }
   if (s.busy) {
     return {
       active: true,
@@ -84,6 +109,28 @@ export function classifyPhase(lang, state) {
     }
   }
   return { active: false, phase: 'idle', blocked: false, text: '' }
+}
+
+export function applyTeamEvent(state, name, payload) {
+  const base = Object.assign({ teamWait: '', notice: '', activity: '', blocked: false, detail: '', error: '' }, state || {})
+  const body = payload && typeof payload === 'object' ? payload : {}
+  const bag = body.args && typeof body.args === 'object'
+    ? body.args
+    : (body.arguments && typeof body.arguments === 'object' ? body.arguments : body)
+  const tool = String(body.name || body.tool_name || body.function_name || '')
+  const lname = String(name || '').toLowerCase()
+  if (lname.includes('kanban_task_completed') || lname.includes('task.completed') || lname.includes('task_completed')) {
+    const summary = body.summary || body.result || body.message || ''
+    return Object.assign({}, base, {
+      teamWait: '', notice: String(summary || 'Done'), blocked: false, error: '', detail: ''
+    })
+  }
+  if (tool === 'kanban_create' || lname === 'kanban_create') {
+    const who = String(body.assignee || bag.assignee || '').trim()
+    if (!who) return Object.assign({}, base)
+    return Object.assign({}, base, { teamWait: who, notice: '', blocked: false, error: '' })
+  }
+  return null
 }
 
 export function canonicalIdsFrom(res, title = BOT_CHAT_TITLE) {
@@ -105,6 +152,8 @@ const $bar = atom({ active: false, phase: 'idle', blocked: false, text: '' })
 const DOT_COLOR = {
   working: '#38bdf8',
   waiting_ok: '#f59e0b',
+  waiting_team: '#f59e0b',
+  done: '#34d399',
   error: '#f87171'
 }
 
@@ -139,6 +188,8 @@ function setup(ctx) {
   let blocked = false
   let detail = ''
   let error = ''
+  let teamWait = ''
+  let notice = ''
   let savedReasoning // undefined = we have not changed the user's setting
   let disposed = false
   let syncSeq = 0
@@ -147,7 +198,7 @@ function setup(ctx) {
   const state = (host && host.state) || {}
 
   function render() {
-    $bar.set(classifyPhase(lang, { inBotChat, busy, activity, blocked, detail, error }))
+    $bar.set(classifyPhase(lang, { inBotChat, busy, activity, blocked, detail, error, teamWait, notice }))
   }
 
   async function applyReasoning(on) {
@@ -193,6 +244,8 @@ function setup(ctx) {
       detail = ''
       error = ''
       activity = ''
+      teamWait = ''
+      notice = ''
       await applyReasoning(hit)
       if (disposed || seq !== syncSeq) return
     }
@@ -210,7 +263,7 @@ function setup(ctx) {
   if (busyAtom && busyAtom.subscribe) {
     unsubs.push(busyAtom.subscribe(v => {
       busy = Boolean(v)
-      if (busy) { activity = ''; blocked = false; detail = ''; error = '' }
+      if (busy) { activity = ''; blocked = false; detail = ''; error = ''; notice = '' }
       render()
     }))
   }
@@ -228,6 +281,17 @@ function setup(ctx) {
       const resStr = payload && typeof payload.result === 'string' ? payload.result : ''
       const errRaw = payload && (payload.error || (payload.status === 'error' ? payload.message : ''))
       const msg = String((payload && (payload.message || payload.error || payload.result_text || payload.summary || resStr)) || '')
+      const team = applyTeamEvent({ teamWait, notice }, name, payload || {})
+      if (team && !(msg.includes('[bot-chat-agent]') || name.includes('approval') || name.includes('permission') || tool === 'clarify')) {
+        teamWait = team.teamWait || ''
+        notice = team.notice || ''
+        if (tool) activity = labelFor(lang, tool)
+        blocked = false
+        detail = ''
+        error = ''
+        render()
+        return
+      }
       if (msg.includes('[bot-chat-agent]') || name.includes('approval') || name.includes('permission') || tool === 'clarify') {
         blocked = true
         error = ''
@@ -264,7 +328,7 @@ function setup(ctx) {
 export default {
   id: 'bot-chat-agent',
   name: 'Bot Chat Agent',
-  description: 'Bot Chat only: a quiet "Working…" status bar and reasoning collapsed by default.',
+  description: 'Bot Chat only: Working, Waiting for your OK, Waiting on a teammate, Done, or Error. Reasoning collapsed by default.',
   defaultEnabled: true,
   register(ctx) { setup(ctx) }
 }

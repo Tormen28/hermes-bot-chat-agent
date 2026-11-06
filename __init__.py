@@ -3,8 +3,10 @@
 Scope: only sessions whose title (or compaction-root title) equals the configured
 Bot Chat title (default "Bot Chat", the same title Hermes core uses for Bot Mode).
 Disclosure: resolves session titles by opening ``<HERMES_HOME>/state.db`` READ-ONLY.
-It never writes state.db and never reads .env, auth.json or any credential store.
-The guard only ever BLOCKS; it never approves anything.
+Team wait checks open ``<HERMES_HOME>/kanban.db`` READ-ONLY when gods are configured.
+It never writes state.db or kanban.db and never reads .env, auth.json or any credential store.
+The guard only ever BLOCKS or adds an idempotency key; it never approves anything.
+With ``team.gods`` empty (the default) this stays single-operator and does not invent teammates.
 """
 from __future__ import annotations
 
@@ -12,11 +14,17 @@ import logging
 import os
 import re
 import sqlite3
+import sys
 import threading
 import time
 from contextlib import closing
 from pathlib import Path
 from typing import Any, Optional
+
+_PLUGIN_DIR = Path(__file__).resolve().parent
+if str(_PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_DIR))
+import team_flow  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +41,8 @@ PRESETS: dict[str, dict[str, bool]] = {
         "external_sends": True,
         "expensive_models": True,
         "one_question_per_turn": True,
+        "kanban_lock": True,
+        "wait_for_god": True,
     },
     "default": {
         "secrets": True,
@@ -42,6 +52,8 @@ PRESETS: dict[str, dict[str, bool]] = {
         "external_sends": True,
         "expensive_models": True,
         "one_question_per_turn": True,
+        "kanban_lock": True,
+        "wait_for_god": True,
     },
     "relaxed": {
         "secrets": True,
@@ -51,6 +63,8 @@ PRESETS: dict[str, dict[str, bool]] = {
         "external_sends": False,
         "expensive_models": False,
         "one_question_per_turn": False,
+        "kanban_lock": True,
+        "wait_for_god": False,
     },
 }
 
@@ -64,6 +78,10 @@ DEFAULTS: dict[str, Any] = {
     "protected_branches": ["main", "master"],
     "expensive_model_patterns": [r"\bpro\b", r"opus", r"\bultra\b", r"-max\b"],
     "external_send_tools": ["send_message", "react_to_message"],
+    # Empty gods = single-operator. Names are Hermes profile names, never hard-coded.
+    "team": {"enabled": True, "gods": []},
+    "kanban_db": "",
+    "notify_state_path": "",
 }
 
 # ---------------------------------------------------------------- i18n
@@ -71,7 +89,8 @@ STYLE = {
     "en": (
         "[Bot Chat style]\n"
         "1. Act, don't narrate: do the work, then reply briefly with the result.\n"
-        "2. Start long tasks with one short acknowledgement line, then work.\n"
+        "2. Start with one short acknowledgement (\"On it — …\"), then act. "
+        "Do not ask for OK on each safe step.\n"
         "3. Don't ask permission for safe, reversible, in-scope steps. Ask at most ONE "
         "question per turn, only when truly blocked.\n"
         "4. Keep replies short and plain; no inner monologue or tool-by-tool logs.\n"
@@ -81,11 +100,15 @@ STYLE = {
         "7. If a tool is blocked by the safety guard, stop that step, tell the user in "
         "one line what needs approval, and continue with the rest.\n"
         "8. Report honestly: say what was verified and what was not.\n"
+        "9. Follow the team note below. If it says single-operator, do the work in this chat.\n"
+        "10. If it names teammates, assign a kanban subcard only to one of those profiles. "
+        "If the note says to wait, do not close that card or a parent that still has it open "
+        "until the board shows it done, then report the result in one or two lines.\n"
     ),
     "es": (
         "[Estilo Bot Chat]\n"
         "1. Actúa, no narres: haz el trabajo y responde breve con el resultado.\n"
-        "2. En tareas largas, empieza con una sola línea de acuse y trabaja.\n"
+        "2. Empieza con una línea corta («Voy a…») y actúa. No pidas OK en cada paso seguro.\n"
         "3. No pidas permiso para pasos seguros, reversibles y dentro del alcance. Haz como "
         "máximo UNA pregunta por turno, solo si estás bloqueado de verdad.\n"
         "4. Respuestas cortas y claras; sin monólogo interno ni logs de herramientas.\n"
@@ -95,6 +118,10 @@ STYLE = {
         "7. Si la guardia bloquea una herramienta, detén ese paso, di en una línea qué "
         "necesita aprobación y sigue con lo demás.\n"
         "8. Reporta con honestidad: qué se verificó y qué no.\n"
+        "9. Sigue la nota de equipo. Si dice un solo operador, haz el trabajo en este chat.\n"
+        "10. Si nombra compañeros, asigna una subtarjeta solo a uno de esos perfiles. "
+        "Si la nota pide esperar, no cierres esa tarjeta ni un padre que aún la tenga abierta "
+        "hasta que el tablero la muestre hecha, y luego cuenta el resultado en una o dos líneas.\n"
     ),
 }
 MSG = {
@@ -108,6 +135,8 @@ MSG = {
         "external_sends": "this sends a message to the outside world.",
         "expensive_models": "this uses an expensive model.",
         "one_question_per_turn": "only one question per turn; continue with your best judgement.",
+        "kanban_lock": "this bypasses the kanban lock.",
+        "wait_for_god": "this closes team work before the assignee delivers.",
     },
     "es": {
         "prefix": "[bot-chat-agent] Bloqueado: ",
@@ -119,6 +148,8 @@ MSG = {
         "external_sends": "esto envía un mensaje al exterior.",
         "expensive_models": "esto usa un modelo caro.",
         "one_question_per_turn": "solo una pregunta por turno; sigue con tu mejor criterio.",
+        "kanban_lock": "esto se salta el candado del kanban.",
+        "wait_for_god": "esto cierra el trabajo de equipo antes de que la persona asignada entregue.",
     },
 }
 
@@ -338,16 +369,74 @@ def check_tool_call(tool_name: str, args: Any, turn_key: str = "") -> Optional[s
     return None
 
 
-def block_message(rule: str) -> str:
+def block_message(rule: str, detail: str = "") -> str:
     m = MSG[_lang()]
-    return m["prefix"] + m.get(rule, rule) + m["suffix"]
+    text = m["prefix"] + m.get(rule, rule) + m["suffix"]
+    extra = str(detail or "").strip()
+    if extra:
+        text += " " + extra
+    return text
+
+
+def _hermes_home() -> Path:
+    try:
+        from hermes_constants import get_hermes_home  # documented home helper
+        return Path(get_hermes_home())
+    except Exception:
+        return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+
+
+def _team() -> dict[str, Any]:
+    raw = _cfg("team")
+    if not isinstance(raw, dict):
+        raw = {}
+    enabled = bool(raw.get("enabled", True))
+    gods = team_flow.normalize_gods(raw.get("gods"))
+    return {"enabled": enabled, "gods": gods if enabled else []}
+
+
+def _kanban_db_path() -> Optional[Path]:
+    raw = str(_cfg("kanban_db") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    env = os.environ.get("HERMES_KANBAN_DB", "").strip()
+    if env:
+        return Path(env).expanduser()
+    home = _hermes_home()
+    board = os.environ.get("HERMES_KANBAN_BOARD", "").strip()
+    if board and board.lower() != "default":
+        return home / "kanban" / "boards" / board / "kanban.db"
+    return home / "kanban.db"
+
+
+def _notify_path() -> Path:
+    raw = str(_cfg("notify_state_path") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return _hermes_home() / "bot-chat-agent" / "team-notify.json"
 
 
 # ---------------------------------------------------------------- hooks
 def _on_pre_llm_call(session_id: str = "", **_: Any) -> Optional[dict]:
     if not _cfg("style") or not is_bot_chat(session_id):
         return None
-    return {"context": STYLE[_lang()]}
+    lang = _lang()
+    parts = [STYLE[lang].rstrip()]
+    try:
+        team = _team()
+        guard = _cfg("guard")
+        parts.append(team_flow.team_note(
+            lang=lang,
+            enabled=bool(team["enabled"]),
+            gods=list(team["gods"]),
+            wait_for_god=bool(guard.get("wait_for_god")),
+            session_id=session_id or "",
+            db_path=_kanban_db_path(),
+            notify_path=_notify_path() if team["gods"] else None,
+        ))
+    except Exception as exc:
+        logger.debug("%s: team note skipped: %s", PLUGIN_ID, exc)
+    return {"context": "\n\n".join(part for part in parts if part)}
 
 
 def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "",
@@ -361,8 +450,70 @@ def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "
         if rule:
             logger.info("%s: blocked %s (%s)", PLUGIN_ID, tool_name, rule)
             return {"action": "block", "message": block_message(rule)}
+        team = _team()
+        guard = _cfg("guard")
+        decision = team_flow.evaluate(
+            tool_name, args,
+            kanban_lock=bool(guard.get("kanban_lock")),
+            wait_for_god=bool(guard.get("wait_for_god")),
+            gods=list(team["gods"]),
+            db_path=_kanban_db_path(),
+            session_id=session_id or "",
+            worker_task=os.environ.get("HERMES_KANBAN_TASK", "").strip(),
+        )
+        if decision.get("rule"):
+            logger.info("%s: blocked %s (%s)", PLUGIN_ID, tool_name, decision["rule"])
+            return {"action": "block", "message": block_message(decision["rule"], decision.get("detail") or "")}
+        if decision.get("modify"):
+            return {"action": "modify", "args": decision["modify"]}
     except Exception as exc:
         logger.debug("%s: guard error: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _on_post_tool_call(tool_name: str = "", args: Any = None, result: Any = None,
+                       session_id: str = "", status: str = "", **kw: Any) -> None:
+    try:
+        team = _team()
+        if not team["gods"]:
+            return None
+        if str(status or kw.get("status") or "").lower() in {"error", "blocked"}:
+            return None
+        if (tool_name or "").strip().lower() != "kanban_create":
+            return None
+        if not _in_scope(session_id, kw.get("parent_session_id")):
+            return None
+        if args is None:
+            args = kw.get("tool_args") or kw.get("arguments") or {}
+        data = args if isinstance(args, dict) else {}
+        team_flow.remember_create(
+            _notify_path(),
+            session_id=session_id or "",
+            title=str(data.get("title") or ""),
+            assignee=str(data.get("assignee") or ""),
+            idempotency=str(data.get("idempotency_key") or data.get("idempotencyKey") or ""),
+            result=result,
+            gods=list(team["gods"]),
+        )
+    except Exception as exc:
+        logger.debug("%s: create memory skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _on_kanban_completed(task_id: str = "", assignee: str = "", summary: str = "", **kw: Any) -> None:
+    try:
+        team = _team()
+        if not team["gods"]:
+            return None
+        team_flow.record_delivery(
+            _notify_path(),
+            task_id=str(task_id or kw.get("task_id") or ""),
+            assignee=str(assignee or kw.get("assignee") or ""),
+            summary=str(summary or kw.get("summary") or kw.get("result") or ""),
+            gods=list(team["gods"]),
+        )
+    except Exception as exc:
+        logger.debug("%s: delivery note skipped: %s", PLUGIN_ID, exc)
     return None
 
 
@@ -371,3 +522,5 @@ def register(ctx: Any) -> None:
     _ctx = ctx
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
+    ctx.register_hook("post_tool_call", _on_post_tool_call)
+    ctx.register_hook("kanban_task_completed", _on_kanban_completed)
