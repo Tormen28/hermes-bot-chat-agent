@@ -30,6 +30,7 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 
 Solo afecta a las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación.
 Las sesiones normales, los subagentes y los perfiles siguen igual.
+La guardia omite las sesiones de subagente, así que los hijos `delegate_task` de un Bot Chat no quedan cubiertos.
 
 ## Instalar
 

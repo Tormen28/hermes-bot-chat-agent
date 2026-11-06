@@ -4,6 +4,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -121,13 +122,15 @@ class TestGuard(Base):
 
     def test_destructive_git(self):
         for c in ("git push --force origin dev", "git reset --hard HEAD~1", "git clean -fd",
-                  "git branch -D x", "git -C repo reset --hard HEAD", "git stash clear"):
+                  "git branch -D x", "git -C repo reset --hard", "git -C repo reset --hard HEAD",
+                  "git --no-pager -C r push origin x --force", "git stash clear"):
             self.assertBlocked("terminal", {"command": c}, "destructive_git")
 
     def test_protected_push(self):
         self.assertBlocked("terminal", {"command": "git push origin main"}, "protected_push")
         self.assertBlocked("terminal", {"command": "git push origin HEAD:master"}, "protected_push")
         self.assertBlocked("terminal", {"command": "git push origin refs/heads/main"}, "protected_push")
+        self.assertBlocked("terminal", {"command": "git --no-pager -C r push origin main"}, "protected_push")
         self.assertBlocked("terminal", {"command": "gh pr merge 12"}, "protected_push")
         self.assertIsNone(self.call("terminal", {"command": "git push origin feature/x"}))
         self.assertIsNone(self.call("terminal", {"command": "git push origin feature/main"}))
@@ -175,6 +178,19 @@ class TestGuard(Base):
     def test_spanish_message(self):
         self.ctx.cfg["language"] = "es"
         self.assertIn("Bloqueado", self.call("send_message", {})["message"])
+
+    def test_git_option_prefix_returns_quickly(self):
+        """A long run of `-C` tokens must not catastrophically backtrack."""
+        cmd = "git " + "-C " * 60 + "x"
+        limit = 0.1  # well under 100 ms; the bounded pattern finishes in well under 1 ms
+
+        started = time.perf_counter()
+        self.assertIsNone(self.call("terminal", {"command": cmd}))
+        self.assertLess(time.perf_counter() - started, limit)
+
+        started = time.perf_counter()
+        self.assertFalse(bca._protected_push(cmd))
+        self.assertLess(time.perf_counter() - started, limit)
 
 
 class TestDesktopSdkOnly(unittest.TestCase):
