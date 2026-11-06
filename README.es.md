@@ -25,12 +25,12 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 | Capa | Qué cambia |
 |---|---|
 | Estilo (`pre_llm_call`) | Un contrato corto de "actúa, no narres": acuse breve, hace el trabajo, resultado corto. Máximo una pregunta por turno. |
-| Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros) y te pregunta primero. Nunca aprueba nada por ti. |
-| Desktop | Una barra discreta "Cargando…" sobre el cuadro de texto y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de aprobación no se tocan. |
+| Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros) y te pregunta primero. Cubre tanto el Bot Chat como sus subagentes hijos (`delegate_task`). Nunca aprueba nada por ti. |
+| Desktop | Una barra de estado discreta sobre el cuadro de texto con fases claras (`Cargando… · <paso>`, `Esperando tu OK`, `Error: <resumen corto>`) y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de herramientas y de aprobación no se ocultan ni se tocan. |
 
-Solo afecta a las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación.
-Las sesiones normales, los subagentes y los perfiles siguen igual.
-La guardia omite las sesiones de subagente, así que los hijos `delegate_task` de un Bot Chat no quedan cubiertos.
+Solo las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación reciben el estilo de respuesta.
+La guardia de seguridad también protege las sesiones hijas `delegate_task` / subagentes lanzadas desde un Bot Chat (heredan la protección del Bot Chat padre), mientras que las sesiones normales, los subagentes de sesiones normales y kanban siguen igual.
+Puedes elegir un preset de guardia (`preset: strict | default | relaxed`) que agrupa únicamente las reglas YAML existentes (`secrets`, `deletes`, `destructive_git`, `protected_push`, `external_sends`, `expensive_models`, `one_question_per_turn`).
 
 ## Instalar
 

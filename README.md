@@ -27,12 +27,11 @@ If you want every detail, open a normal session: it stays exactly as it was.
 | Layer | What changes |
 |---|---|
 | Style (`pre_llm_call`) | A short "act, don't narrate" contract: brief acknowledgement, do the work, short result. At most one question per turn. |
-| Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models) and asks you first. It never approves anything. |
-| Desktop | A quiet "Working…" bar above the composer, and reasoning collapsed by default while a Bot Chat is focused. Approval cards are untouched. |
+| Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models) and asks you first. Covers both the Bot Chat session and its `delegate_task` / subagent child sessions. It never approves anything. |
+| Desktop | A quiet status bar above the composer with clear phases (`Working… · <step>`, `Waiting for your OK`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
 
-Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children are affected.
-Normal sessions, subagents and profiles behave exactly as before.
-The guard skips subagent sessions, so `delegate_task` children of a Bot Chat are not covered.
+Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
+The safety guard also protects `delegate_task` / subagent child sessions spawned from a Bot Chat (inheriting parent Bot Chat protection), while normal sessions, subagents of normal sessions, and kanban sessions behave exactly as before.
 
 ## Install
 
@@ -64,6 +63,7 @@ plugins:
         language: en            # en | es
         style: true
         scope: bot_chat         # bot_chat | all  (where the guard runs)
+        preset: default         # strict | default | relaxed
         guard:
           secrets: true
           deletes: true
@@ -77,6 +77,18 @@ plugins:
         external_send_tools: [send_message, react_to_message]
 ```
 Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also treated as an outbound send.
+
+### Guard presets
+
+Presets only package the existing YAML rule groups (no free-form regex allowlists; defaults stay safe):
+
+| Preset | Enabled rule groups |
+|---|---|
+| `strict` | All 7 rules on: `secrets`, `deletes`, `destructive_git`, `protected_push`, `external_sends`, `expensive_models`, `one_question_per_turn` |
+| `default` | All 7 rules on (same safe baseline as `strict`) |
+| `relaxed` | Keeps critical guardrails (`secrets`, `destructive_git`, `protected_push`) on; turns off `deletes`, `external_sends`, `expensive_models`, `one_question_per_turn` |
+
+You can set `preset: relaxed` (or `guard: relaxed`) and still override individual boolean rules inside `guard:`.
 
 ## Guard rules
 | Rule | Blocks (examples) |
@@ -136,12 +148,12 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 | Capa | Qué cambia |
 |---|---|
 | Estilo (`pre_llm_call`) | Un contrato corto de "actúa, no narres": acuse breve, hace el trabajo, resultado corto. Máximo una pregunta por turno. |
-| Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros) y te pregunta primero. Nunca aprueba nada por ti. |
-| Desktop | Una barra discreta "Cargando…" sobre el cuadro de texto y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de aprobación no se tocan. |
+| Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros) y te pregunta primero. Cubre tanto el Bot Chat como sus subagentes hijos (`delegate_task`). Nunca aprueba nada por ti. |
+| Desktop | Una barra de estado discreta sobre el cuadro de texto con fases claras (`Cargando… · <paso>`, `Esperando tu OK`, `Error: <resumen corto>`) y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de herramientas y de aprobación no se ocultan ni se tocan. |
 
-Solo afecta a las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación.
-Las sesiones normales, los subagentes y los perfiles siguen igual.
-La guardia omite las sesiones de subagente, así que los hijos `delegate_task` de un Bot Chat no quedan cubiertos.
+Solo las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación reciben el estilo de respuesta.
+La guardia de seguridad también protege las sesiones hijas `delegate_task` / subagentes lanzadas desde un Bot Chat (heredan la protección del Bot Chat padre), mientras que las sesiones normales, los subagentes de sesiones normales y kanban siguen igual.
+Puedes elegir un preset de guardia (`preset: strict | default | relaxed`) que agrupa únicamente las reglas YAML existentes (`secrets`, `deletes`, `destructive_git`, `protected_push`, `external_sends`, `expensive_models`, `one_question_per_turn`).
 
 ### Instalar
 

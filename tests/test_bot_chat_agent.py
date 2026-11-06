@@ -1,14 +1,28 @@
 """Tests for bot-chat-agent. Run: python -m pytest tests -q  (or python -m unittest)."""
+import atexit
 import importlib.util
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
+sys.dont_write_bytecode = True
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _clean_pycache() -> None:
+    for pycache in ROOT.rglob("__pycache__"):
+        shutil.rmtree(pycache, ignore_errors=True)
+
+
+_clean_pycache()
+atexit.register(_clean_pycache)
 spec = importlib.util.spec_from_file_location("bot_chat_agent", ROOT / "__init__.py")
 bca = importlib.util.module_from_spec(spec)
 sys.modules["bot_chat_agent"] = bca
@@ -46,9 +60,13 @@ class Base(unittest.TestCase):
             ("bot", "Bot Chat", None, "desktop"),
             ("child", None, "bot", "desktop"),
             ("sub", "Subagent: x", "bot", "subagent"),
+            ("sub_nested", "Subagent: y", "sub", "subagent"),
+            ("sub_of_child", "Subagent: z", "child", "subagent"),
             ("tool_sub", None, "bot", "tool"),
             ("branch", "Feature work", "bot", "desktop"),
             ("other", "My project", None, "desktop"),
+            ("other_sub", "Subagent: o", "other", "subagent"),
+            ("kanban_sub", "Subagent: k", "bot", "kanban"),
         ])
         bca._state_db = lambda: self.db
 
@@ -59,8 +77,15 @@ class TestDetection(Base):
         self.assertTrue(bca.is_bot_chat("child"))
 
     def test_other_sessions_untouched(self):
-        for sid in ("other", "sub", "tool_sub", "branch", "missing", "", None):
-            self.assertFalse(bca.is_bot_chat(sid))
+        for sid in ("other", "sub", "sub_nested", "sub_of_child", "tool_sub",
+                    "other_sub", "kanban_sub", "branch", "missing", "", None):
+            self.assertFalse(bca.is_bot_chat(sid), f"{sid} should be False without include_subagents")
+
+    def test_subagents_of_bot_chat_inherit_when_enabled(self):
+        for sid in ("sub", "sub_nested", "sub_of_child", "tool_sub"):
+            self.assertTrue(bca.is_bot_chat(sid, include_subagents=True), f"{sid} should inherit Bot Chat")
+        for sid in ("other", "other_sub", "kanban_sub", "branch", "missing", "", None):
+            self.assertFalse(bca.is_bot_chat(sid, include_subagents=True), f"{sid} should NOT inherit Bot Chat")
 
     def test_custom_title(self):
         self.ctx.cfg["bot_chat_title"] = "My project"
@@ -161,15 +186,58 @@ class TestGuard(Base):
                            ("terminal", {"command": "npm test"})):
             self.assertIsNone(self.call(tool, args), f"{tool} {args}")
 
-    def test_scope_bot_chat_only(self):
-        self.assertIsNone(self.call("terminal", {"command": "rm -rf build"}, sid="other"))
+    def test_scope_bot_chat_and_subagents(self):
+        # Canonical Bot Chat and its subagent children are guarded
+        for sid in ("bot", "child", "sub", "sub_nested", "sub_of_child", "tool_sub"):
+            self.assertIsNotNone(self.call("terminal", {"command": "rm -rf build"}, sid=sid), sid)
+        # Unspawned child passing parent_session_id in hook kwargs is also guarded
+        r = self.ctx.hooks["pre_tool_call"](
+            tool_name="terminal", args={"command": "rm -rf build"},
+            session_id="unindexed_sub", parent_session_id="bot", turn_id="t1")
+        self.assertIsNotNone(r)
+        # Non-Bot-Chat sessions and their subagents are untouched unless scope == "all"
+        for sid in ("other", "other_sub", "branch", "kanban_sub"):
+            self.assertIsNone(self.call("terminal", {"command": "rm -rf build"}, sid=sid), sid)
         self.ctx.cfg["scope"] = "all"
         self.assertIsNotNone(self.call("terminal", {"command": "rm -rf build"}, sid="other"))
+        self.assertIsNotNone(self.call("terminal", {"command": "rm -rf build"}, sid="other_sub"))
 
     def test_rule_toggle(self):
         self.ctx.cfg["guard"] = {"deletes": False}
         self.assertIsNone(self.call("terminal", {"command": "rm -rf build"}))
         self.assertIsNotNone(self.call("terminal", {"command": "git push origin main"}))
+
+    def test_presets_strict_default_relaxed(self):
+        # Default preset blocks everything
+        self.assertIsNotNone(self.call("terminal", {"command": "rm -rf build"}))
+        self.assertIsNotNone(self.call("send_message", {"text": "hi"}))
+        self.assertIsNotNone(self.call("delegate_task", {"goal": "x", "model": "gemini-3-pro"}))
+
+        # Relaxed preset keeps secrets, destructive_git, protected_push ON, turns off deletes/sends/expensive/one_question
+        self.ctx.cfg["preset"] = "relaxed"
+        self.assertIsNotNone(self.call("read_file", {"path": ".env"}))
+        self.assertIsNotNone(self.call("terminal", {"command": "git reset --hard HEAD"}))
+        self.assertIsNotNone(self.call("terminal", {"command": "git push origin main"}))
+        self.assertIsNone(self.call("terminal", {"command": "rm -rf build"}))
+        self.assertIsNone(self.call("send_message", {"text": "hi"}))
+        self.assertIsNone(self.call("delegate_task", {"goal": "x", "model": "gemini-3-pro"}))
+        self.assertIsNone(self.call("clarify", {"question": "q1?"}))
+        self.assertIsNone(self.call("clarify", {"question": "q2?"}))
+
+        # Explicit per-rule override on top of relaxed preset
+        self.ctx.cfg["guard"] = {"deletes": True}
+        self.assertIsNotNone(self.call("terminal", {"command": "rm -rf build"}))
+        self.assertIsNone(self.call("send_message", {"text": "hi"}))
+
+        # Strict preset blocks all 7 rules
+        self.ctx.cfg = {"preset": "strict"}
+        for k, v in bca._cfg("guard").items():
+            self.assertTrue(v, k)
+
+        # Unknown preset falls back safely to default (all True)
+        self.ctx.cfg = {"preset": "custom_unknown"}
+        for k, v in bca._cfg("guard").items():
+            self.assertTrue(v, k)
 
     def test_never_approves(self):
         src = (ROOT / "__init__.py").read_text(encoding="utf-8")
@@ -201,9 +269,49 @@ class TestDesktopSdkOnly(unittest.TestCase):
             self.assertNotIn(bad, js, bad)
         self.assertIn("from '@hermes/plugin-sdk'", js)
 
+    def test_status_bar_phases_present(self):
+        js = (ROOT / "desktop" / "plugin.js").read_text(encoding="utf-8")
+        for expected in ("Working…", "Waiting for your OK", "Esperando tu OK", "classifyPhase", "shortError",
+                         "waiting_ok", "working", "error"):
+            self.assertIn(expected, js, expected)
+
+    def test_status_bar_phase_logic_via_node(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        js = (ROOT / "desktop" / "plugin.js").read_text(encoding="utf-8")
+        # Strip the two SDK/React import lines so pure helper functions can run in plain Node
+        stripped = "\n".join(
+            line for line in js.splitlines()
+            if not line.strip().startswith("import ")
+        ).replace("export function ", "function ").replace("export default {", "const _plugin = {")
+        harness = """
+const assert = require('assert');
+function atom(v) { return { get: () => v, set: (n) => { v = n; } }; }
+const COMPOSER_AREAS = { top: 'top' };
+const host = {};
+function useValue(a) { return a.get(); }
+function jsx(t, p) { return { t, p }; }
+function jsxs(t, p) { return { t, p }; }
+""" + stripped + """
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: false, busy: true }), { active: false, phase: 'idle', blocked: false, text: '' });
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: true, activity: '' }), { active: true, phase: 'working', blocked: false, text: 'Working… · Thinking…' });
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: true, activity: 'Reading files' }), { active: true, phase: 'working', blocked: false, text: 'Working… · Reading files' });
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: true, blocked: true, detail: 'this deletes files or data.' }), { active: true, phase: 'waiting_ok', blocked: true, text: 'Waiting for your OK · this deletes files or data.' });
+assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: false, blocked: true, detail: '' }), { active: true, phase: 'waiting_ok', blocked: true, text: 'Esperando tu OK' });
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: false, error: 'Connection reset by peer\\nstack trace' }), { active: true, phase: 'error', blocked: false, text: 'Error: Connection reset by peer' });
+assert.strictEqual(shortError('[bot-chat-agent] Blocked: x\\nline2', 20), 'Blocked: x');
+console.log('NODE_OK');
+"""
+        proc = subprocess.run([node, "-e", harness], capture_output=True, text=True, timeout=5)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("NODE_OK", proc.stdout)
+
 
 class TestPackaging(unittest.TestCase):
     def test_no_bytecode_or_secrets(self):
+        for pycache in ROOT.rglob("__pycache__"):
+            shutil.rmtree(pycache, ignore_errors=True)
         bad = [p for p in ROOT.rglob("*") if p.suffix in {".pyc", ".pyo"} or p.name in {".env", "auth.json"}]
         self.assertEqual(bad, [])
 
