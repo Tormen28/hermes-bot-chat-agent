@@ -24,12 +24,8 @@ PLUGIN_ID = "bot-chat-agent"
 DEFAULT_TITLE = "Bot Chat"
 _CACHE_TTL = 30.0
 
-DEFAULTS: dict[str, Any] = {
-    "bot_chat_title": DEFAULT_TITLE,
-    "language": "en",                 # en | es
-    "style": True,                    # inject the agentic style contract
-    "scope": "bot_chat",              # bot_chat | all  (where the guard applies)
-    "guard": {
+PRESETS: dict[str, dict[str, bool]] = {
+    "strict": {
         "secrets": True,
         "deletes": True,
         "destructive_git": True,
@@ -38,6 +34,33 @@ DEFAULTS: dict[str, Any] = {
         "expensive_models": True,
         "one_question_per_turn": True,
     },
+    "default": {
+        "secrets": True,
+        "deletes": True,
+        "destructive_git": True,
+        "protected_push": True,
+        "external_sends": True,
+        "expensive_models": True,
+        "one_question_per_turn": True,
+    },
+    "relaxed": {
+        "secrets": True,
+        "deletes": False,
+        "destructive_git": True,
+        "protected_push": True,
+        "external_sends": False,
+        "expensive_models": False,
+        "one_question_per_turn": False,
+    },
+}
+
+DEFAULTS: dict[str, Any] = {
+    "bot_chat_title": DEFAULT_TITLE,
+    "language": "en",                 # en | es
+    "style": True,                    # inject the agentic style contract
+    "scope": "bot_chat",              # bot_chat | all  (where the guard applies)
+    "preset": "default",              # strict | default | relaxed
+    "guard": dict(PRESETS["default"]),
     "protected_branches": ["main", "master"],
     "expensive_model_patterns": [r"\bpro\b", r"opus", r"\bultra\b", r"-max\b"],
     "external_send_tools": ["send_message", "react_to_message"],
@@ -106,11 +129,24 @@ _ctx: Any = None
 def _cfg(key: str) -> Any:
     default = DEFAULTS[key]
     if _ctx is None or not hasattr(_ctx, "get_config"):
-        return default
+        return dict(default) if isinstance(default, dict) else default
     try:
-        val = _ctx.get_config(key, default)
+        val = _ctx.get_config(key, None)
     except Exception:
-        return default
+        return dict(default) if isinstance(default, dict) else default
+    if key == "guard":
+        raw_preset = None
+        try:
+            raw_preset = _ctx.get_config("preset", None)
+        except Exception:
+            pass
+        pname = str(raw_preset or (val if isinstance(val, str) else "default")).strip().lower()
+        base = dict(PRESETS.get(pname, PRESETS["default"]))
+        if isinstance(val, dict):
+            for k in PRESETS["default"]:
+                if k in val and isinstance(val[k], bool):
+                    base[k] = val[k]
+        return base
     if isinstance(default, dict) and isinstance(val, dict):
         merged = dict(default)
         merged.update(val)
@@ -124,7 +160,7 @@ def _lang() -> str:
 
 
 # ---------------------------------------------------------------- detection
-_cache: dict[tuple[str, str, str], tuple[bool, float]] = {}
+_cache: dict[tuple[str, str, str, bool], tuple[bool, float]] = {}
 _lock = threading.Lock()
 
 
@@ -137,8 +173,8 @@ def _state_db() -> Path:
 
 
 def is_bot_chat(session_id: Optional[str], db_path: Optional[Path] = None,
-                title: Optional[str] = None) -> bool:
-    """True if session_id is a canonical Bot Chat session (or its compaction child)."""
+                title: Optional[str] = None, include_subagents: bool = False) -> bool:
+    """True if session_id is a canonical Bot Chat session (or its compaction/subagent child)."""
     sid = (session_id or "").strip() if isinstance(session_id, str) else ""
     if not sid:
         return False
@@ -146,7 +182,8 @@ def is_bot_chat(session_id: Optional[str], db_path: Optional[Path] = None,
     db = db_path or _state_db()
     if not db.is_file():
         return False
-    key = (str(db), sid, want)
+    inc = bool(include_subagents)
+    key = (str(db), sid, want, inc)
     now = time.monotonic()
     with _lock:
         hit = _cache.get(key)
@@ -167,8 +204,14 @@ def is_bot_chat(session_id: Optional[str], db_path: Optional[Path] = None,
                 if row is None:
                     break
                 t, parent, source = (row[0] or "").strip(), row[1], (row[2] or "").lower()
-                if source in ("subagent", "tool", "kanban") or t.startswith("Subagent:"):
+                if source == "kanban":
                     break
+                is_sub = source in ("subagent", "tool") or t.startswith("Subagent:")
+                if is_sub:
+                    if not inc:
+                        break
+                    cur = parent
+                    continue
                 if t == want:
                     result = True
                     break
@@ -185,8 +228,11 @@ def is_bot_chat(session_id: Optional[str], db_path: Optional[Path] = None,
     return result
 
 
-def _in_scope(session_id: Optional[str]) -> bool:
-    return str(_cfg("scope")) == "all" or is_bot_chat(session_id)
+def _in_scope(session_id: Optional[str], parent_session_id: Optional[str] = None) -> bool:
+    if str(_cfg("scope")) == "all":
+        return True
+    return (is_bot_chat(session_id, include_subagents=True) or
+            is_bot_chat(parent_session_id, include_subagents=True))
 
 
 # ---------------------------------------------------------------- guard rules
@@ -309,7 +355,7 @@ def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "
     try:
         if args is None:
             args = kw.get("tool_args") or kw.get("arguments") or {}
-        if not _in_scope(session_id or kw.get("parent_session_id")):
+        if not _in_scope(session_id, kw.get("parent_session_id")):
             return None
         rule = check_tool_call(tool_name, args, f"{session_id}:{turn_id or task_id}")
         if rule:

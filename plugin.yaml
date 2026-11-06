@@ -1,18 +1,19 @@
 name: bot-chat-agent
 label: Bot Chat Agent
 kind: standalone
-version: 0.1.0
+version: 0.2.0
 author: "Tormen28"
 license: MIT
 homepage: "https://github.com/Tormen28/hermes-bot-chat-agent"
 description: >
   Makes a bot's canonical "Bot Chat" session (Bot Mode / hermes-bots) feel
   like a focused assistant: a concise, agentic reply style, a configurable
-  safety guard that blocks risky tool calls (secrets, deletes, destructive
+  safety guard with presets (strict/default/relaxed) that blocks risky tool
+  calls in Bot Chat and its subagent children (secrets, deletes, destructive
   git, pushes to protected branches, outbound messages, expensive models),
-  and a Desktop "Working…" status bar with reasoning collapsed by default.
-  Only sessions titled "Bot Chat" are affected; every other session is
-  untouched. Reads state.db read-only to resolve session titles.
+  and a Desktop status bar (Working / Waiting for your OK / Error) with
+  reasoning collapsed by default. Reads state.db read-only to resolve session
+  titles.
 requires_hermes: ">=0.22.5"
 manifest_version: 2
 provides_tools: []
