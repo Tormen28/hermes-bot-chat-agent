@@ -113,6 +113,7 @@ _DELEGATION_STATE = {
     },
 }
 
+MAX_CARD_DELEGATIONS = 4
 _OPEN = {"received", "queued", "working", "waiting", "blocked"}
 
 
@@ -296,7 +297,11 @@ def snapshot(*, lang: str = "en", enabled: bool = True, origin: str = "",
             title = " ".join(str(item.get("title") or item.get("text") or "").split())
             if title:
                 rec_rows.append({"title": title[:80], "type": str(item.get("type") or item.get("kind") or "")})
-        delegations = [_delegation_from_task(t) for t in norm if t.get("to")]
+        # A live card, not a log: open work first, then the most recent, at most MAX_CARD_DELEGATIONS.
+        ordered = sorted((t for t in norm if t.get("to")),
+                         key=lambda t: (0 if str(t.get("status") or "") in _OPEN else 1,
+                                        -float(t.get("updated_at") or 0)))
+        delegations = [_delegation_from_task(t) for t in ordered[:MAX_CARD_DELEGATIONS]]
         active, others = _bots(origin, session_id, norm, pending_list, lang)
         return {
             "enabled": True,

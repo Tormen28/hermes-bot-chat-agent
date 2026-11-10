@@ -191,6 +191,19 @@ class TestStatusSnapshot(unittest.TestCase):
         self.assertTrue(other["athena"]["stalled"])
         self.assertEqual(snap["delegations"][0]["elapsed_seconds"], 11, "input not mutated")
 
+    def test_card_shows_open_work_first_and_at_most_four_delegations(self):
+        now = 1_000_000.0
+        tasks = [{"task_id": f"d{i}", "title": f"job {i}", "status": "ready", "assignee": f"bot{i}",
+                  "created_at": now - 600 + i, "updated_at": now - 500 + i} for i in range(7)]
+        tasks.append({"task_id": "open", "title": "still going", "status": "queued", "assignee": "athena",
+                      "created_at": now - 900, "updated_at": now - 900})
+        snap = self.sp.snapshot(lang="en", origin="Hermes", session_id="s", now=now, tasks=tasks)
+        got = [d["task_id"] for d in snap["delegations"]]
+        self.assertEqual(len(got), 4)
+        self.assertEqual(got[0], "open")
+        self.assertEqual(got[1:], ["d6", "d5", "d4"])
+        self.assertEqual(len(snap["tasks"]), 8, "the data itself is not truncated")
+
     def test_refresh_live_is_fail_open(self):
         self.assertEqual(self.sp.refresh_live({}), {})
         self.assertEqual(self.sp.refresh_live(None), None)
