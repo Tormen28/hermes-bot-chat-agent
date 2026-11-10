@@ -140,7 +140,7 @@ DEFAULTS: dict[str, Any] = {
     # `roster_in_context` adds one short "who does what" line when team.assignees
     # contains preset ids. Custom profile names never get an invented role.
     "panteon": {"prefix": "", "roster_in_context": True},
-    "status_panel": {"enabled": True, "stalled_after_seconds": 120},
+    "status_panel": {"enabled": True, "stalled_after_seconds": 120, "bot_name": ""},
     # Fase 3 background work (route A): visible queue per session (plan
     # §6: max 10 open background tasks). The dispatcher of the core
     # runs them; the plugin only coordinates, tracks and delivers.
@@ -818,12 +818,50 @@ def _status_cfg() -> dict[str, Any]:
             "stalled_after_seconds": max(15, stalled)}
 
 
+def _profile_label() -> str:
+    """Display name of the profile this process serves (the bot that is talking).
+
+    A named profile lives in ``<root>/profiles/<name>``; its ``profile.yaml`` may carry a
+    ``display_name`` or the Bots-panel title. The default profile is the coordinator and is
+    called ``status_panel.bot_name`` or "Hermes". Never raises, never reads anything but
+    ``profile.yaml`` of the profile in use."""
+    try:
+        override = ""
+        raw = _cfg("status_panel")
+        if isinstance(raw, dict):
+            override = str(raw.get("bot_name") or "").strip()
+        if override:
+            return override[:40]
+        try:
+            from hermes_constants import get_hermes_home  # type: ignore
+            home = Path(get_hermes_home())
+        except Exception:
+            home = Path(os.environ.get("HERMES_HOME", "") or "")
+        if str(home) in ("", "."):
+            return "Hermes"
+        if home.parent.name != "profiles":
+            return "Hermes"
+        label = home.name
+        meta = home / "profile.yaml"
+        if meta.is_file():
+            text = meta.read_text(encoding="utf-8", errors="replace")[:20000]
+            m = re.search(r"(?m)^display_name:\s*['\"]?([^'\"\n#]{1,40})", text)
+            if not m:
+                m = re.search(r"(?m)^\s+title:\s*['\"]?([^'\"\n#]{1,40})", text)
+            if m and m.group(1).strip():
+                label = m.group(1).strip()
+        return label[:40] or "Hermes"
+    except Exception:
+        return "Hermes"
+
+
 def _session_bot_name(session_id: str) -> str:
-    """Best available bot/session label; generic 'Bot Chat' is the fallback."""
+    """Best available bot label: a real session title, else the profile's own name (so a
+    canonical "Bot Chat" session still says which bot is talking); "Bot Chat" as last resort."""
     try:
         sid = (session_id or "").strip()
         if not sid:
-            return "Bot Chat"
+            return _profile_label()
         db = _state_db()
         if db and Path(db).is_file():
             import sqlite3
@@ -836,7 +874,7 @@ def _session_bot_name(session_id: str) -> str:
                 return title
     except Exception:
         pass
-    return "Bot Chat"
+    return _profile_label()
 
 
 def _collect_status_tasks(session_id: str = "") -> list[dict[str, Any]]:

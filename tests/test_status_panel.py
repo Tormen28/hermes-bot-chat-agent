@@ -203,3 +203,63 @@ class TestStatusWriterHook(Base):
         self.ctx.hooks["pre_llm_call"](session_id="bot", turn_id="t0")
         snap = sp.read_snapshot(self.home / "bot-chat-agent" / "status.json")
         self.assertEqual(snap.get("enabled"), False)
+
+
+class TestProfileLabel(unittest.TestCase):
+    """A canonical session is always titled "Bot Chat": the card must name the BOT (profile)."""
+
+    def setUp(self):
+        import sys as _s
+        self.bca = _s.modules["bot_chat_agent"]
+        self._env = os.environ.get("HERMES_HOME")
+        self._ctx = self.bca._ctx
+
+    def tearDown(self):
+        if self._env is None:
+            os.environ.pop("HERMES_HOME", None)
+        else:
+            os.environ["HERMES_HOME"] = self._env
+        self.bca._ctx = self._ctx
+
+    def _home(self, name, profile_yaml=None):
+        root = Path(tempfile.mkdtemp(prefix="bca-prof-"))
+        home = (root / "profiles" / name) if name else root
+        home.mkdir(parents=True, exist_ok=True)
+        if profile_yaml is not None:
+            (home / "profile.yaml").write_text(profile_yaml, encoding="utf-8")
+        os.environ["HERMES_HOME"] = str(home)
+        return home
+
+    def _label(self):
+        try:
+            import hermes_constants  # noqa: F401  (a real core on the path decides by itself)
+            self.skipTest("a real hermes_constants is importable; env override not used")
+        except ImportError:
+            pass
+        return self.bca._profile_label()
+
+    def test_default_profile_is_the_coordinator(self):
+        self._home(None)
+        self.assertEqual(self._label(), "Hermes")
+
+    def test_named_profile_uses_its_directory_name(self):
+        self._home("iris")
+        self.assertEqual(self._label(), "iris")
+
+    def test_display_name_from_profile_yaml(self):
+        self._home("iris", "display_name: Iris Designer\ndescription: x\n")
+        self.assertEqual(self._label(), "Iris Designer")
+
+    def test_session_bot_name_prefers_a_real_title_then_the_profile(self):
+        self._home("athena")
+        self.assertEqual(self.bca._session_bot_name(""), "athena")
+        self.assertEqual(self.bca._session_bot_name("no-such-session"), "athena")
+
+    def test_config_override_wins(self):
+        self._home("athena")
+
+        class Ctx:
+            def get_config(self, key, default=None):
+                return {"bot_name": "Boss"} if key == "status_panel" else default
+        self.bca._ctx = Ctx()
+        self.assertEqual(self.bca._profile_label(), "Boss")
