@@ -214,6 +214,9 @@ class BotChatContextEngine(_Base):  # type: ignore[misc]
                  protected_block: Optional[Callable[..., str]] = None,
                  clear_fingerprint: Optional[Callable[..., None]] = None):
         self._model = str(model or "")
+        # Remembered so a lazily created compactor gets the real window (a delegate created with
+        # context_length=0 has a threshold of 0 and NEVER compacts: the history grows unbounded).
+        self._context_length = 0
         # Callables supplied by the plugin (resolved lazily per call, so
         # the engine never holds paths, DB connections or locks).
         self._build_context = build_context
@@ -260,6 +263,7 @@ class BotChatContextEngine(_Base):  # type: ignore[misc]
             protected_block=self._protected_block,
             clear_fingerprint=self._clear_fingerprint,
         )
+        clone._context_length = self._context_length
         clone.last_prompt_tokens = self.last_prompt_tokens
         clone.last_completion_tokens = self.last_completion_tokens
         clone.last_total_tokens = self.last_total_tokens
@@ -269,6 +273,10 @@ class BotChatContextEngine(_Base):  # type: ignore[misc]
     def update_model(self, model: str, context_length: int, base_url: str = "",
                      api_key: str = "", provider: str = "", api_mode: str = "") -> None:
         self._model = str(model or "")
+        try:
+            self._context_length = int(context_length or 0)
+        except (TypeError, ValueError):
+            self._context_length = 0
         if self._delegate is not None:
             try:
                 self._delegate.update_model(
@@ -286,7 +294,10 @@ class BotChatContextEngine(_Base):  # type: ignore[misc]
         the plugin's own deterministic :class:`LocalCompactor` is used. The core's private
         ``ContextCompressor`` is deliberately not imported (catalog rule 9: public surfaces only)."""
         if self._delegate is None:
-            self._delegate = LocalCompactor(model=self._model or "unknown")
+            self._delegate = LocalCompactor(
+                model=self._model or "unknown", context_length=self._context_length,
+                threshold_percent=self.threshold_percent,
+                protect_first_n=self.protect_first_n, protect_last_n=self.protect_last_n)
         return self._delegate
 
     # ------------------------------------------------------------------ core API
