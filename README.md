@@ -42,6 +42,12 @@ Clean-install run (fresh `HERMES_HOME`, real Hermes webapp, simulated model): go
 |---|---|---|
 | ![God row](docs/screenshots/20-newuser-god-created.png) | ![Dark card](docs/screenshots/22-newuser-status-card-dark.png) | ![Memory](docs/screenshots/23-newuser-memory-new-session.png) |
 
+Language follows you, and a stopped delegation is explained (English / French user, same card):
+
+| | | |
+|---|---|---|
+| ![English user](docs/screenshots/24-newuser-english-god-ready.png) | ![Stopped, explained](docs/screenshots/25-newuser-loop-guard-explained.png) | ![French card](docs/screenshots/26-newuser-french-card.png) |
+
 ## What it does
 
 | Layer | What changes |
