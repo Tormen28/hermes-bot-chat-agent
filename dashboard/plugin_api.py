@@ -22,7 +22,7 @@ def get_status() -> dict:
         import status_panel
         snap = status_panel.read_snapshot(status_panel.status_path())
         if isinstance(snap, dict) and snap:
-            data = snap
+            data = status_panel.refresh_live(snap)
     except Exception:
         pass
     try:

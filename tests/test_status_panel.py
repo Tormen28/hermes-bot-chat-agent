@@ -172,6 +172,31 @@ class TestStatusSnapshot(unittest.TestCase):
         self.assertEqual(by["daedalus"]["elapsed_seconds"], 30, "done after 30s, not 20 minutes")
         self.assertEqual(by["athena"]["elapsed_seconds"], 20, "open work keeps counting")
 
+    def test_refresh_live_keeps_the_clock_running_between_turns(self):
+        now = 1_000_000.0
+        snap = self.sp.snapshot(
+            lang="en", origin="Hermes", session_id="s", now=now, stalled_after_seconds=120,
+            tasks=[{"task_id": "dm:1", "title": "research", "status": "queued", "assignee": "athena",
+                    "created_at": now - 11, "updated_at": now - 11},
+                   {"task_id": "dm:2", "title": "refactor", "status": "ready", "assignee": "daedalus",
+                    "created_at": now - 900, "updated_at": now - 870}])
+        self.assertEqual(snap["delegations"][0]["elapsed_seconds"], 11)
+        later = self.sp.refresh_live(snap, now=now + 600)
+        by = {d["to"]: d for d in later["delegations"]}
+        self.assertEqual(by["athena"]["elapsed_seconds"], 611)
+        self.assertTrue(by["athena"]["stalled"], "a reply that never came must show as stalled")
+        self.assertEqual(by["daedalus"]["elapsed_seconds"], 30, "finished work keeps its duration")
+        self.assertFalse(by["daedalus"]["stalled"])
+        other = {b["name"]: b for b in later["bots"] if b.get("role") == "other"}
+        self.assertTrue(other["athena"]["stalled"])
+        self.assertEqual(snap["delegations"][0]["elapsed_seconds"], 11, "input not mutated")
+
+    def test_refresh_live_is_fail_open(self):
+        self.assertEqual(self.sp.refresh_live({}), {})
+        self.assertEqual(self.sp.refresh_live(None), None)
+        weird = {"tasks": ["x", {"created_at": "bad"}], "delegations": [3], "bots": [None]}
+        self.assertIsInstance(self.sp.refresh_live(weird), dict)
+
     def test_elapsed_and_stalled_threshold(self):
         self.assertEqual(self.sp.elapsed_seconds(self.now - 45, now=self.now), 45)
         self.assertEqual(self.sp.format_elapsed(45, "en"), "45s")

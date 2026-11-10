@@ -356,6 +356,66 @@ def read_snapshot(path: Path | str | None = None) -> dict[str, Any]:
         return {}
 
 
+def refresh_live(snap: dict[str, Any], now: float | None = None) -> dict[str, Any]:
+    """Re-derive elapsed time and the stalled flag at READ time.
+
+    ``status.json`` is only rewritten on hooks, so between turns (or after the app restarted and
+    the teammate's reply was lost) a delegation would read "waiting for reply 11s" forever and the
+    stalled warning could never appear. Pure; returns a new dict; never raises.
+    """
+    try:
+        if not isinstance(snap, dict) or not snap:
+            return snap
+        t = float(now if now is not None else time.time())
+        threshold = int(snap.get("stalled_after_seconds") or DEFAULT_STALLED_AFTER)
+        out = dict(snap)
+        by_id: dict[str, dict[str, Any]] = {}
+        by_name: dict[str, dict[str, Any]] = {}
+        tasks = []
+        for task in snap.get("tasks") or []:
+            if not isinstance(task, dict):
+                continue
+            row = dict(task)
+            created = float(row.get("created_at") or 0)
+            updated = float(row.get("updated_at") or created or 0)
+            status = str(row.get("status") or "received")
+            if status in _OPEN or not (updated >= created > 0):
+                row["elapsed_seconds"] = elapsed_seconds(created, now=t)
+            else:
+                row["elapsed_seconds"] = elapsed_seconds(created, now=updated)
+            row["stalled"] = is_stalled(updated, now=t, threshold=threshold, status=status)
+            tasks.append(row)
+            if row.get("task_id"):
+                by_id[str(row["task_id"])] = row
+            name = str(row.get("assignee") or "").strip().lower()
+            if name:
+                by_name.setdefault(name, row)
+        out["tasks"] = tasks
+        deleg = []
+        for d in snap.get("delegations") or []:
+            if not isinstance(d, dict):
+                continue
+            row = dict(d)
+            src = by_id.get(str(row.get("task_id") or ""))
+            if src:
+                row["elapsed_seconds"], row["stalled"] = src["elapsed_seconds"], src["stalled"]
+            deleg.append(row)
+        out["delegations"] = deleg
+        bots = []
+        for b in snap.get("bots") or []:
+            if not isinstance(b, dict):
+                continue
+            row = dict(b)
+            src = by_name.get(str(row.get("name") or "").strip().lower()) if row.get("role") == "other" else None
+            if src:
+                row["elapsed_seconds"], row["stalled"] = src["elapsed_seconds"], src["stalled"]
+            bots.append(row)
+        out["bots"] = bots
+        return out
+    except Exception:
+        return snap
+
+
 def publish(*, home: Path | None = None, **kwargs: Any) -> dict[str, Any]:
     """Build a snapshot and write it to the default status.json path."""
     try:
