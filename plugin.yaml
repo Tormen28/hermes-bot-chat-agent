@@ -13,9 +13,12 @@ description: >
   destructive git, pushes to protected branches, outbound messages, expensive
   models, kanban-lock bypasses), and a Desktop status bar (Working / Waiting
   for your OK / Waiting on a teammate / Done / Error) with reasoning collapsed
-  by default. With team.gods empty it stays single-operator. When gods are
-  configured it assigns kanban cards to those profiles and will not close
-  them until the board shows done. Reads state.db and kanban.db read-only.
+  by default. With team.assignees empty it stays single-operator (the default
+  on a fresh install; an existing install that already lists teammates keeps
+  the team on). When assignees are configured it assigns kanban cards to those
+  profiles and will not close them until the board shows done. The old
+  team.gods key still works; if both keys exist and differ the plugin blocks
+  with an explanation instead of guessing. Reads state.db and kanban.db read-only.
 requires_hermes: ">=0.22.5"
 manifest_version: 2
 provides_tools: []
@@ -23,10 +26,20 @@ provides_hooks:
   - pre_llm_call
   - pre_tool_call
   - post_tool_call
+  - post_llm_call
+  - agent_loop_stopped
   - kanban_task_completed
+  - kanban_task_blocked
+  - kanban_task_claimed
+  - on_kanban_worker_spawned
 hooks:
   - pre_llm_call
   - pre_tool_call
   - post_tool_call
+  - post_llm_call
+  - agent_loop_stopped
   - kanban_task_completed
+  - kanban_task_blocked
+  - kanban_task_claimed
+  - on_kanban_worker_spawned
 tags: [bot-mode, bot-chat, safety, desktop, ux]

@@ -26,16 +26,18 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 |---|---|
 | Estilo (`pre_llm_call`) | Un contrato corto de "actúa, no narres": un acuse (`Voy a…`), hace el trabajo, resultado corto. Máximo una pregunta por turno. |
 | Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros, saltarse el candado del kanban) y te pregunta primero. Cubre tanto el Bot Chat como sus subagentes hijos (`delegate_task`). Nunca aprueba nada por ti. |
-| Equipo | Sin `team.gods`, el bot trabaja solo. Con nombres de perfiles reales, crea subtareas y no las cierra hasta que el tablero las muestra hechas. |
+| Equipo | Sin `team.assignees`, el bot trabaja solo. Con nombres de perfiles reales, crea subtareas y no las cierra hasta que el tablero las muestra hechas. |
 | Desktop | Una barra de estado discreta (`Cargando… · <paso>`, `Esperando tu OK`, `Esperando a <perfil>`, `Listo · <resumen>`, `Error: <resumen corto>`) y el razonamiento colapsado por defecto mientras estás en un Bot Chat. |
 
 Solo las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación reciben el estilo de respuesta.
 La guardia de seguridad también protege las sesiones hijas `delegate_task` / subagentes lanzadas desde un Bot Chat (heredan la protección del Bot Chat padre). Las sesiones normales y sus subagentes siguen igual. El trabajador kanban del perfil asignado queda fuera de esa guardia, así que puede entregar su tarjeta.
-**0.3.0-dev** en esta rama es un corte privado de prueba, no la publicación del catálogo de Nous. Sin `team.gods` el bot trabaja solo. Con nombres de perfiles, espera a que el tablero marque la tarjeta como hecha. `relaxed` mantiene el candado del kanban y apaga esa espera. La guía completa está en [README.md](README.md).
+**0.3.0-dev** en esta rama es un corte privado de prueba, no la publicación del catálogo de Nous. Sin `team.assignees` el bot trabaja solo. Con nombres de perfiles, espera a que el tablero marque la tarjeta como hecha. `relaxed` mantiene el candado del kanban y apaga esa espera. La guía completa está en [README.md](README.md).
+
+**Fase 4 — una versión, dos modos.** Una instalación nueva es individual por defecto; un equipo existente que ya lista compañeros (en `team.assignees` o en la clave antigua `team.gods`, que sigue funcionando) no se desactiva con el nuevo default. Si las dos claves existen y difieren, el plugin bloquea con una explicación en vez de adivinar. En modo individual, crear una tarjeta para un perfil no configurado se bloquea (no se inventan compañeros).
 
 ## Instalar
 
-Requiere Hermes `>= 0.22.5`.
+Requiere Hermes `>= 0.22.5` (verificado: esa versión ya tiene los hooks que usa el plugin — `post_llm_call`, `agent_loop_stopped`, `kanban_task_blocked`).
 
 ```bash
 hermes plugins install /ruta/a/esta/copia

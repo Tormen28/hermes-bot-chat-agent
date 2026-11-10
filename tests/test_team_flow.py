@@ -207,6 +207,14 @@ class TestWaitForGod(TeamBase):
         self.assertNotIn("Single-operator", text)
 
     def test_delivery_is_announced_once(self):
+        # Fase 1a: la entrega se correlaciona con la sesión "bot"
+        # (kanban_create) y el turno se confirma (post_llm_call) entre las
+        # dos lecturas; sin confirmar, la segunda lectura re-ofrecería el
+        # aviso por diseño (eso es E5, no E6).
+        self.ctx.hooks["post_tool_call"](
+            tool_name="kanban_create",
+            args={"title": "Patch", "assignee": "Researcher"},
+            result={"id": "t9"}, session_id="bot", status="ok")
         self.ctx.hooks["kanban_task_completed"](
             task_id="t9", assignee="researcher", summary="Ship the patch")
         self.ctx.hooks["kanban_task_completed"](
@@ -214,6 +222,7 @@ class TestWaitForGod(TeamBase):
         first = self.style()["context"]
         self.assertIn("Ship the patch", first)
         self.assertNotIn("do not leak this", first)
+        self.ctx.hooks["post_llm_call"](session_id="bot")
         second = self.style()["context"]
         self.assertNotIn("Ship the patch", second)
 
@@ -292,12 +301,25 @@ class TestPresetsUnchangedCore(TeamBase):
 
 class TestNotifyFile(TeamBase):
     def test_state_file_has_no_secrets_and_is_json(self):
+        # Fase 1a: el almacén vivo es SQLite (deliveries.db junto al JSON);
+        # el JSON ya no se escribe. El test afirma sobre el store: la
+        # entrega existe una sola vez, con su resumen, y sin secretos.
         self.ctx.cfg["team"] = {"gods": ["researcher"]}
         self.ctx.hooks["kanban_task_completed"](
             task_id="t9", assignee="researcher", summary="Ship the patch")
-        raw = Path(self.ctx.cfg["notify_state_path"]).read_text(encoding="utf-8")
-        data = json.loads(raw)
-        self.assertIn("t9", data["pending"])
+        notify = Path(self.ctx.cfg["notify_state_path"])
+        self.assertFalse(
+            notify.is_file(),
+            "el backend sqlite no escribe team-notify.json",
+        )
+        import delivery_store
+        store = delivery_store.DeliveryStore(
+            delivery_store.store_path_for(notify))
+        rows = store.get("t9")
+        self.assertEqual(len(rows), 1, "t9 debe existir una sola vez en el store")
+        self.assertEqual(rows[0]["status"], "pending")
+        self.assertEqual(rows[0]["summary"], "Ship the patch")
+        raw = json.dumps(rows, ensure_ascii=False)
         self.assertNotIn("BEGIN ", raw)
         self.assertNotIn("api_key", raw.lower())
 

@@ -310,9 +310,16 @@ assert.strictEqual(classifyPhase('en', { inBotChat: false, notice: 'Ship the pat
 const created = applyTeamEvent({ teamWait: '', notice: 'old' }, 'tool', { name: 'kanban_create', assignee: 'researcher' });
 assert.strictEqual(created.teamWait, 'researcher');
 assert.strictEqual(created.notice, '');
-const done = applyTeamEvent({ teamWait: 'researcher', notice: '' }, 'kanban_task_completed', { assignee: 'researcher', summary: 'Ship the patch' });
+const done = applyTeamEvent({ teamWait: 'researcher', notice: '' }, 'kanban_task_completed', { task_id: 't-1', assignee: 'researcher', summary: 'Ship the patch', session_id: 's1' });
 assert.strictEqual(done.teamWait, '');
-assert.strictEqual(done.notice, 'Ship the patch');
+assert.deepStrictEqual(done.ready, { s1: ['t-1'] });
+assert.strictEqual(done.notice, '');
+// Fase 3: completed feeds the ready badge (dedup by task id), not a Done notice.
+assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: false, ready: { s1: ['t-1'] }, focusedSession: 's1' }), { active: true, phase: 'ready', blocked: false, text: '1 resultado listo' });
+assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: true, ready: { s1: ['t-1'] }, focusedSession: 's1', activity: 'Reading files' }), { active: true, phase: 'working', blocked: false, text: 'Cargando… · Reading files' });
+const queued = applyTeamEvent({ teamWait: '', notice: '' }, 'kanban_task_claimed', { task_id: 't-2', assignee: 'researcher' });
+assert.strictEqual(queued.queued, 'researcher');
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: false, queued: 'researcher' }), { active: true, phase: 'queued', blocked: false, text: 'Queued · researcher' });
 console.log('NODE_OK');
 """
         proc = subprocess.run([node, "-e", harness], capture_output=True, text=True, timeout=5)

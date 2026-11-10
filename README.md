@@ -30,7 +30,7 @@ If you want every detail, open a normal session: it stays exactly as it was.
 |---|---|
 | Style (`pre_llm_call`) | A short "act, don't narrate" contract: one acknowledgement (`On it — …`), then the work, then a short result. At most one question per turn. |
 | Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models, kanban-lock bypasses) and asks you first. Covers both the Bot Chat session and its `delegate_task` / subagent child sessions. It never approves anything. |
-| Team | With no `team.gods`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
+| Team | With no `team.assignees`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
 | Desktop | A quiet status bar above the composer (`Working… · <step>`, `Waiting for your OK`, `Waiting on <profile>`, `Done · <summary>`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
@@ -39,7 +39,7 @@ A kanban worker session is outside that scope, so the assigned profile can deliv
 
 ## Install
 
-Requires Hermes `>= 0.22.5`.
+Requires Hermes `>= 0.22.5` (verified: that version already has every hook this plugin uses — `post_llm_call`, `agent_loop_stopped`, `kanban_task_blocked` — checked against the core tags; no raise was needed).
 
 ```bash
 hermes plugins install /path/to/this/checkout
@@ -82,12 +82,36 @@ plugins:
         expensive_model_patterns: ['\bpro\b', 'opus', '\bultra\b', '-max\b']
         external_send_tools: [send_message, react_to_message]
         team:
-          enabled: true
-          gods: []             # Hermes profile names. Empty = single-operator.
+          assignees: []        # Hermes profile names. Empty = single-operator (the default).
+                               # `team.gods` is the old key and still works; if both keys
+                               # exist and differ, the plugin refuses to guess and blocks
+                               # with an explanation. A fresh install is individual; an
+                               # existing install that already lists teammates keeps the
+                               # team on (no new key needed). `team.enabled: false` turns
+                               # the team off even if names are listed.
         kanban_db: ""          # empty = <HERMES_HOME>/kanban.db (or the HERMES_KANBAN_BOARD path)
         notify_state_path: ""  # empty = <HERMES_HOME>/bot-chat-agent/team-notify.json
+        delivery:              # Fase 1a delivery store (SQLite, next to team-notify.json)
+          backend: sqlite      # sqlite | json (json = legacy path, revert switch)
+          offer_lease_seconds: 600   # an offered notice is re-offered after this
+          db_path: ""          # empty = <HERMES_HOME>/bot-chat-agent/deliveries.db
+          destination: offer   # Fase 1b: offer (default, in-turn only) | auto | b1
+                               # auto/b1 write the result durably into the session
+                               # transcript when the core exposes B1 (ctx methods
+                               # record_delegation_delivery / record_completion_note);
+                               # on the live core (no B1) they fall back to offer.
+          relay_limit: 50      # max pending rows per durable-relay attempt
+          retention_days: 30   # prune only delivered/seen rows older than this
+        context:              # Fase 2: bounded context (rubric docs/fase2-rubric.md)
+          dynamic_tokens: 1500   # per-turn budget: project state + notices
+          stable_tokens: 300     # budget for the stable style instructions
+          per_piece_tokens: 2000 # cap per context piece (plugin policy)
+          engine_name: bot-chat  # ContextEngine name; activate with context.engine: bot-chat
+          incremental_note: true # after the first turn, only what changed
 ```
 Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also treated as an outbound send.
+
+**Bounded context (Fase 2).** The turn context is split into stable instructions (≤300 tokens), project state, tasks and notices (≤1,500 tokens, 2,000 per piece), measured with the tokenizer. After the first full turn the team note is incremental — only what changed is injected; a turn with no changes injects one short line. Critical constraints are never dropped; anything else that does not fit is listed as dropped. The project card (`<HERMES_HOME>/bot-chat-agent/project-card.md`, wow 7) is the source of truth: manual edits always win, are versioned in the store, and derived content never writes the file. After a cancellation, a compaction or a reopen, the context is rebuilt from the durable store. The plugin also registers a delegating `ContextEngine` named `bot-chat` (no core change: compaction is still delegated to the core's `ContextCompressor`; only `select_context` is overridden) — activate it with `context.engine: bot-chat` in the core config (single slot; without it the `pre_llm_call` hook keeps injecting).
 
 ### Guard presets
 
@@ -112,7 +136,7 @@ You can set `preset: relaxed` (or `guard: relaxed`) and still override individua
 | expensive_models | `delegate_task` with a model matching the patterns |
 | one_question_per_turn | a second `clarify` in the same turn |
 | kanban_lock | writing `kanban.db`, mutating `hermes kanban` from the shell, impersonating the user, or creating a card that is already finished. Missing `idempotency_key` on `kanban_create` is filled in, not blocked |
-| wait_for_god | `kanban_complete` (and review/archive) of a card assigned to `team.gods`, or of an ancestor that still has such a card open, until that card's status is `done` |
+| wait_for_god | `kanban_complete` (and review/archive) of a card assigned to `team.assignees`, or of an ancestor that still has such a card open, until that card's status is `done` |
 
 The guard is a safety net based on patterns, not a sandbox. Keep Hermes's own approval settings on.
 
@@ -120,9 +144,23 @@ The guard is a safety net based on patterns, not a sandbox. Keep Hermes's own ap
 
 Both work. Nothing here depends on a particular set of profile names.
 
-**Single-operator** (`team.gods: []`, the default). You ask, Bot Chat says `On it — …` and does the work in that chat. It does not create teammates, and it does not wait on a board. The kanban lock still applies if the model tries to write the board database directly.
+**Single-operator** (no `team.assignees`, the default on a fresh install). You ask, Bot Chat says `On it — …` and does the work in that chat. It does not create teammates, and it does not wait on a board. A `kanban_create` naming any profile is blocked: individual mode invents no teammates (an unassigned card is still allowed — that is your own board work, not delegation). The kanban lock still applies if the model tries to write the board database directly.
 
-**Team.** Put existing Hermes profile names in `team.gods` (the names you already use, whatever they are). When work belongs to one of them, Bot Chat creates a kanban subcard assigned to that profile. The guard then refuses to close that card, or a parent/fork that still has it open, until `kanban.db` shows the card `done`. The assigned profile delivers with `kanban_complete` inside its own dispatcher worker. The next Bot Chat turn gets a one-line result note, once, and the Desktop bar can show `Waiting on <profile>` and then `Done · <summary>`.
+**Team.** Put existing Hermes profile names in `team.assignees` (the names you already use, whatever they are; `team.gods` is the old key and still works). When work belongs to one of them, Bot Chat creates a kanban subcard assigned to that profile. The guard then refuses to close that card, or a parent/fork that still has it open, until `kanban.db` shows the card `done`. The assigned profile delivers with `kanban_complete` inside its own dispatcher worker. The next Bot Chat turn gets a one-line result note, once, and the Desktop bar can show `Waiting on <profile>` and then `Done · <summary>`. A blocked card (`kanban_task_blocked`) is announced the same way. Deliveries are stored in SQLite (`deliveries.db`, protocol `pending → offered → delivered_in_turn`): a notice is offered to a turn, and only confirmed after that turn generates — an interrupted turn loses nothing, the notice is re-offered next turn or when its 10-minute lease expires. Each notice goes only to the session that created the card (tracked via `kanban_create`); without a known session it waits in an unassigned tray and is never announced in another chat. Delivery failures are logged at `warning`, never swallowed.
+
+A new default never disables an existing team: if your config already lists teammates (under `team.assignees` or the old `team.gods`) and has no `team.enabled` key, the team stays on. `team.enabled: false` turns the team off explicitly, even with names listed.
+
+### Core version and degradation
+
+Minimum core is `>= 0.22.5` (that version already has all three hooks this plugin depends on). On an older core the plugin still loads — the core warns on unknown hook names but stores them — and degrades as follows, with nothing silently lost:
+
+| Missing hook | What degrades | What still holds |
+|---|---|---|
+| `post_llm_call` | Offers are never confirmed by a generated turn; notices are re-offered next turn or when the 10-minute lease expires (at-least-once, deduplicated by ID in the text) | No notice is lost; the lease is the mechanism |
+| `agent_loop_stopped` | No fast release on `/stop`; offers are released only by lease expiry | Same as above — slower, not lost |
+| `kanban_task_blocked` | A blocked card is never announced in chat (no notice is invented); the card stays visible on the board | The user sees it on the board; nothing is announced in the wrong session |
+
+A contradictory team config (`team.assignees` and `team.gods` both set and different) fails closed: every tool call in scope is blocked with the explanation, the error is logged at load, and the turn note shows it — the guard and the team are never silently disabled.
 
 `wait_for_god` is off in the `relaxed` preset. `team.enabled: false` also turns the team note and the wait off, even if names are listed.
 
@@ -137,11 +175,11 @@ The worker is allowed to finish only its own card: Hermes sets `HERMES_KANBAN_TA
 Hermes already owns the board. This plugin does not ship `kanban_*` tools, does not start the dispatcher, and does not create or edit profiles.
 
 - The orchestrator profile needs the Hermes `kanban` toolset, or `kanban_create` is not there to call.
-- A running gateway dispatcher spawns the assignee. Profile names in `team.gods` must already exist; this plugin will not invent them.
+- A running gateway dispatcher spawns the assignee. Profile names in `team.assignees` must already exist; this plugin will not invent them.
 - Hermes stamps `tasks.session_id` from `HERMES_SESSION_ID`. That is how the turn note lists open cards for this chat. Completing by task id still checks the assignee even when `session_id` is missing.
 - Hermes `kanban.auto_subscribe_on_create` (default true) wakes the originating chat when a card finishes. This plugin adds the one-line note and the Desktop phases; it does not replace that subscription.
 - Default board path: `<HERMES_HOME>/kanban.db`, or `<HERMES_HOME>/kanban/boards/<HERMES_KANBAN_BOARD>/kanban.db`. Override with `kanban_db` or `HERMES_KANBAN_DB`.
-- Delivery dedup file: `<HERMES_HOME>/bot-chat-agent/team-notify.json` (task id, assignee, one-line summary). Override with `notify_state_path`.
+- Delivery store: `<HERMES_HOME>/bot-chat-agent/deliveries.db` (SQLite; task id, kind, session id, assignee, one-line summary, status). Override with `delivery.db_path`. The legacy `team-notify.json` is imported once (pending entries not yet announced) and never modified afterwards; `delivery.backend: json` reverts to the legacy path without uninstalling. The store must live on a local disk, never in a synced folder or on a network path (checked at startup, warning only). Fase 1b: the outbox is complete — relay claim leases, dead-letter after 5 failed attempts, retention prune (delivered/seen only, `delivery.retention_days`), `oldest_pending_age_seconds` in `stats()`, and a switchable durable destination: `delivery.destination: offer` (default — the result is offered in the next turn) or `auto`/`b1`, which writes the result as a durable row in the destination session's transcript when the core exposes B1, with a stable id per delivery (a retry after a crash returns the same message id, never a second row) and a durable mark recorded before confirming, so a crash between the write and the confirm can never re-offer the result.
 - It does not write `state.db` or `kanban.db`, and it does not edit `SOUL.md` or profile files.
 
 ## Disclosures
@@ -191,12 +229,12 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 |---|---|
 | Estilo (`pre_llm_call`) | Un contrato corto de "actúa, no narres": un acuse (`Voy a…`), hace el trabajo, resultado corto. Máximo una pregunta por turno. |
 | Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros, saltarse el candado del kanban) y te pregunta primero. Cubre tanto el Bot Chat como sus subagentes hijos (`delegate_task`). Nunca aprueba nada por ti. |
-| Equipo | Sin `team.gods`, el Bot Chat hace el trabajo él solo. Con nombres de perfiles, asigna subtareas y no las cierra hasta que el tablero las muestra hechas. |
+| Equipo | Sin `team.assignees`, el Bot Chat hace el trabajo él solo. Con nombres de perfiles, asigna subtareas y no las cierra hasta que el tablero las muestra hechas. |
 | Desktop | Una barra de estado discreta (`Cargando… · <paso>`, `Esperando tu OK`, `Esperando a <perfil>`, `Listo · <resumen>`, `Error: <resumen corto>`) y el razonamiento colapsado por defecto mientras estás en un Bot Chat. Las tarjetas de herramientas y de aprobación no se ocultan ni se tocan. |
 
 Solo las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación reciben el estilo de respuesta.
 La guardia de seguridad también protege las sesiones hijas `delegate_task` / subagentes lanzadas desde un Bot Chat (heredan la protección del Bot Chat padre), mientras que las sesiones normales, los subagentes de sesiones normales y kanban siguen igual.
-Puedes elegir un preset de guardia (`preset: strict | default | relaxed`). `strict` y `default` incluyen el candado del kanban y la espera al compañero. `relaxed` deja el candado puesto y apaga la espera. Sin nombres en `team.gods` no hay equipo: el bot trabaja solo y no inventa perfiles. El detalle está en inglés, arriba.
+Puedes elegir un preset de guardia (`preset: strict | default | relaxed`). `strict` y `default` incluyen el candado del kanban y la espera al compañero. `relaxed` deja el candado puesto y apaga la espera. Sin nombres en `team.assignees` no hay equipo: el bot trabaja solo y no inventa perfiles. El detalle está en inglés, arriba.
 
 ### Instalar
 
@@ -221,7 +259,9 @@ O apágalo en **Capacidades → Plugins**. Al desactivarlo se restaura tu ajuste
 
 La configuración (`language: es` para respuestas en español), las reglas de la guardia y las divulgaciones
 están detalladas arriba en inglés. En resumen: lee `state.db` **solo en modo lectura** para encontrar los Bot Chat,
-nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no envía telemetría.
+nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no envía telemetría. El contexto acotado
+(Fase 2) se activa con `context.engine: bot-chat`; la ficha de proyecto vive en
+`<HERMES_HOME>/bot-chat-agent/project-card.md` y puedes editarla a mano: tus ediciones siempre mandan.
 
 **Limitación conocida:** el SDK público de Desktop puede colapsar el razonamiento pero aún no puede ocultar las
 tarjetas de herramientas por sesión, así que esas tarjetas siguen visibles en Bot Chat.

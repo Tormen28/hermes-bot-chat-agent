@@ -3,13 +3,14 @@
 Scope: only sessions whose title (or compaction-root title) equals the configured
 Bot Chat title (default "Bot Chat", the same title Hermes core uses for Bot Mode).
 Disclosure: resolves session titles by opening ``<HERMES_HOME>/state.db`` READ-ONLY.
-Team wait checks open ``<HERMES_HOME>/kanban.db`` READ-ONLY when gods are configured.
+Team wait checks open ``<HERMES_HOME>/kanban.db`` READ-ONLY when assignees are configured.
 It never writes state.db or kanban.db and never reads .env, auth.json or any credential store.
 The guard only ever BLOCKS or adds an idempotency key; it never approves anything.
-With ``team.gods`` empty (the default) this stays single-operator and does not invent teammates.
+With ``team.assignees`` empty (the default) this stays single-operator and does not invent teammates.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -25,6 +26,14 @@ _PLUGIN_DIR = Path(__file__).resolve().parent
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 import team_flow  # noqa: E402
+import team_config  # noqa: E402
+import delivery_store  # noqa: E402
+import background_tasks as _background_tasks  # noqa: E402
+import scheduled_tasks as _scheduled_tasks  # noqa: E402
+import context_budget  # noqa: E402
+import context_sections  # noqa: E402
+import project_card  # noqa: E402
+import context_engine as _context_engine  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +87,31 @@ DEFAULTS: dict[str, Any] = {
     "protected_branches": ["main", "master"],
     "expensive_model_patterns": [r"\bpro\b", r"opus", r"\bultra\b", r"-max\b"],
     "external_send_tools": ["send_message", "react_to_message"],
-    # Empty gods = single-operator. Names are Hermes profile names, never hard-coded.
-    "team": {"enabled": True, "gods": []},
+    # Empty assignees = single-operator. Names are Hermes profile names, never hard-coded.
+    # Fase 4: the default is individual (no `enabled` key); an existing
+    # install that already lists teammates keeps the team on, because
+    # `enabled` absent is derived from the list (team_config).
+    "team": {"assignees": []},
     "kanban_db": "",
     "notify_state_path": "",
+    # Fase 1a delivery: "sqlite" (durable store, deliveries.db next to
+    # team-notify.json) or "json" (legacy path, revert switch; keeps E1/E4/E5/E6).
+    # Fase 1b destination: "offer" (default: in-turn offer only — the live
+    # core has no B1), "auto" (B1 when the core exposes it, else offer) or
+    # "b1" (attempt B1 when present; offer fallback when it is not).
+    "delivery": {"backend": "sqlite", "offer_lease_seconds": 600, "db_path": "",
+                 "destination": "offer", "relay_limit": 50, "retention_days": 30},
+    # Fase 2 context: 1,500 dynamic + 300 stable tokens (plan §11), 2,000
+    # per piece (B4-2 policy, plugin side). "incremental_note" renders
+    # only what changed since the last turn; "engine_name" is the
+    # ContextEngine name the core must select (context.engine: bot-chat).
+    "context": {"dynamic_budget_tokens": 1500, "stable_budget_tokens": 300,
+                "per_piece_tokens": 2000, "engine_name": "bot-chat",
+                "incremental_note": True},
+    # Fase 3 background work (route A): visible queue per session (plan
+    # §6: max 10 open background tasks). The dispatcher of the core
+    # runs them; the plugin only coordinates, tracks and delivers.
+    "background": {"max_per_session": 10},
 }
 
 # ---------------------------------------------------------------- i18n
@@ -91,37 +121,41 @@ STYLE = {
         "1. Act, don't narrate: do the work, then reply briefly with the result.\n"
         "2. Start with one short acknowledgement (\"On it — …\"), then act. "
         "Do not ask for OK on each safe step.\n"
-        "3. Don't ask permission for safe, reversible, in-scope steps. Ask at most ONE "
+        "3. Don't ask permission for safe, reversible steps. Ask at most ONE "
         "question per turn, only when truly blocked.\n"
-        "4. Keep replies short and plain; no inner monologue or tool-by-tool logs.\n"
+        "4. Keep replies short; no inner monologue or tool logs.\n"
         "5. Never reveal or paste secrets, tokens, keys, .env or auth files.\n"
         "6. Deleting, destructive git, pushing to protected branches, sending messages "
-        "to the outside world and using expensive models require the user's explicit OK.\n"
-        "7. If a tool is blocked by the safety guard, stop that step, tell the user in "
+        "outside and using expensive models require the user's explicit OK.\n"
+        "7. If the guard blocks a tool, stop that step, tell the user in "
         "one line what needs approval, and continue with the rest.\n"
         "8. Report honestly: say what was verified and what was not.\n"
         "9. Follow the team note below. If it says single-operator, do the work in this chat.\n"
         "10. If it names teammates, assign a kanban subcard only to one of those profiles. "
         "If the note says to wait, do not close that card or a parent that still has it open "
-        "until the board shows it done, then report the result in one or two lines.\n"
+        "until the board shows it done, then report it briefly.\n"
+        "11. Schedule only if the user explicitly asks (cronjob, deliver=\"local\"). "
+        "Fires arrive here.\n"
     ),
     "es": (
         "[Estilo Bot Chat]\n"
         "1. Actúa, no narres: haz el trabajo y responde breve con el resultado.\n"
         "2. Empieza con una línea corta («Voy a…») y actúa. No pidas OK en cada paso seguro.\n"
-        "3. No pidas permiso para pasos seguros, reversibles y dentro del alcance. Haz como "
+        "3. No pidas permiso para pasos seguros y reversibles. Haz como "
         "máximo UNA pregunta por turno, solo si estás bloqueado de verdad.\n"
-        "4. Respuestas cortas y claras; sin monólogo interno ni logs de herramientas.\n"
+        "4. Respuestas cortas; sin monólogo interno ni logs.\n"
         "5. Nunca muestres secretos, tokens, claves, .env ni archivos de auth.\n"
-        "6. Borrar, git destructivo, push a ramas protegidas, enviar mensajes al exterior "
+        "6. Borrar, git destructivo, push a ramas protegidas, enviar mensajes fuera "
         "y usar modelos caros requieren el OK explícito del usuario.\n"
         "7. Si la guardia bloquea una herramienta, detén ese paso, di en una línea qué "
-        "necesita aprobación y sigue con lo demás.\n"
+        "falta y sigue con lo demás.\n"
         "8. Reporta con honestidad: qué se verificó y qué no.\n"
         "9. Sigue la nota de equipo. Si dice un solo operador, haz el trabajo en este chat.\n"
         "10. Si nombra compañeros, asigna una subtarjeta solo a uno de esos perfiles. "
         "Si la nota pide esperar, no cierres esa tarjeta ni un padre que aún la tenga abierta "
-        "hasta que el tablero la muestre hecha, y luego cuenta el resultado en una o dos líneas.\n"
+        "hasta que el tablero la muestre hecha, y luego cuéntalo brevemente.\n"
+        "11. Programa solo si el usuario lo pide explícitamente (cronjob, "
+        "deliver=\"local\"). Cada disparo llega aquí.\n"
     ),
 }
 MSG = {
@@ -137,6 +171,9 @@ MSG = {
         "one_question_per_turn": "only one question per turn; continue with your best judgement.",
         "kanban_lock": "this bypasses the kanban lock.",
         "wait_for_god": "this closes team work before the assignee delivers.",
+        "team_assignee": "background work can only be assigned to a configured profile.",
+        "queue_full": "the background queue is full (10 open tasks in this session).",
+        "stop_all": "background work is stopped for this session (stop-all).",
     },
     "es": {
         "prefix": "[bot-chat-agent] Bloqueado: ",
@@ -150,6 +187,9 @@ MSG = {
         "one_question_per_turn": "solo una pregunta por turno; sigue con tu mejor criterio.",
         "kanban_lock": "esto se salta el candado del kanban.",
         "wait_for_god": "esto cierra el trabajo de equipo antes de que la persona asignada entregue.",
+        "team_assignee": "el trabajo de fondo solo se puede asignar a un perfil configurado.",
+        "queue_full": "la cola de fondo está llena (10 tareas abiertas en esta sesión).",
+        "stop_all": "el trabajo de fondo está parado en esta sesión (stop-all).",
     },
 }
 
@@ -387,12 +427,28 @@ def _hermes_home() -> Path:
 
 
 def _team() -> dict[str, Any]:
-    raw = _cfg("team")
-    if not isinstance(raw, dict):
-        raw = {}
-    enabled = bool(raw.get("enabled", True))
-    gods = team_flow.normalize_gods(raw.get("gods"))
-    return {"enabled": enabled, "gods": gods if enabled else []}
+    """Effective team settings (Fase 4: ``team.assignees``, ``team.gods`` legacy).
+
+    Reads the RAW ``team`` config (not the merged defaults: the merge
+    would inject ``assignees: []`` and hide whether the user set anything).
+    Raises :class:`team_config.TeamConfigError` when ``assignees`` and
+    ``gods`` both exist and differ; callers that must not guess (the
+    guard) fail closed on it, the rest stand down and log.
+    """
+    raw: Any = None
+    if _ctx is not None and hasattr(_ctx, "get_config"):
+        try:
+            raw = _ctx.get_config("team", None)
+        except Exception:
+            raw = None
+    if raw is None:
+        raw = DEFAULTS["team"]
+    resolved = team_config.resolve_team(raw)
+    return {
+        "enabled": resolved["enabled"],
+        "assignees": resolved["assignees"],
+        "legacy_gods": resolved["legacy_gods"],
+    }
 
 
 def _kanban_db_path() -> Optional[Path]:
@@ -416,27 +472,465 @@ def _notify_path() -> Path:
     return _hermes_home() / "bot-chat-agent" / "team-notify.json"
 
 
-# ---------------------------------------------------------------- hooks
-def _on_pre_llm_call(session_id: str = "", **_: Any) -> Optional[dict]:
-    if not _cfg("style") or not is_bot_chat(session_id):
+def _delivery_cfg() -> dict[str, Any]:
+    raw = _cfg("delivery")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "backend": str(raw.get("backend") or "sqlite"),
+        "offer_lease_seconds": raw.get("offer_lease_seconds", 600),
+        "db_path": str(raw.get("db_path") or ""),
+        "destination": str(raw.get("destination") or "offer"),
+        "relay_limit": raw.get("relay_limit", 50),
+        "retention_days": raw.get("retention_days", 30),
+    }
+
+
+def _delivery_destination() -> str:
+    import durable_destination
+    return durable_destination.normalize_mode(_delivery_cfg()["destination"])
+
+
+def _relay_limit() -> int:
+    try:
+        return max(0, int(_delivery_cfg()["relay_limit"]))
+    except (TypeError, ValueError):
+        return 50
+
+
+def _retention_days() -> int:
+    try:
+        return max(0, int(_delivery_cfg()["retention_days"]))
+    except (TypeError, ValueError):
+        return delivery_store.DEFAULT_RETENTION_DAYS
+
+
+def _background_cfg() -> dict[str, Any]:
+    """Fase 3 background-work config (visible queue per session)."""
+    raw = _cfg("background")
+    if not isinstance(raw, dict):
+        raw = {}
+    try:
+        max_per = max(0, int(raw.get("max_per_session", 10)))
+    except (TypeError, ValueError):
+        max_per = _background_tasks.MAX_PER_SESSION
+    return {"max_per_session": max_per or _background_tasks.MAX_PER_SESSION}
+
+
+def _relay_pending(session_id: str = "") -> None:
+    """Best-effort durable relay (Fase 1b): B1 when available, else nothing.
+
+    Never raises and never loses a delivery: when B1 is unavailable the
+    offer path still delivers the row in-turn. Failures are logged at
+    warning; the row stays pending.
+    """
+    try:
+        if _delivery_backend() != "sqlite":
+            return None
+        counts = team_flow.relay_pending(
+            _notify_path(), ctx=_ctx, session_id=session_id,
+            limit=_relay_limit(), destination=_delivery_destination(),
+            lease_seconds=_delivery_lease(), backend="sqlite",
+        )
+        if counts["delivered"]:
+            logger.info("%s: relay delivered %d via %s",
+                        PLUGIN_ID, counts["delivered"], counts["active_path"])
+        elif counts["failed"]:
+            logger.warning("%s: relay failed for %d delivery(ies)",
+                           PLUGIN_ID, counts["failed"])
+    except Exception as exc:
+        logger.warning("%s: relay skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _delivery_backend() -> str:
+    return "json" if _delivery_cfg()["backend"].strip().lower() == "json" else "sqlite"
+
+
+def _delivery_lease() -> int:
+    try:
+        return max(0, int(_delivery_cfg()["offer_lease_seconds"]))
+    except (TypeError, ValueError):
+        return delivery_store.DEFAULT_LEASE_SECONDS
+
+
+def _delivery_db_path() -> Path:
+    raw = _delivery_cfg()["db_path"].strip()
+    if raw:
+        return Path(raw).expanduser()
+    return delivery_store.store_path_for(_notify_path())
+
+
+# ---------------------------------------------------------------- Fase 3b scheduled
+def _observe_scheduled_fires(session_id: str) -> None:
+    """Deliver new cron fires to this session's outbox (best effort).
+
+    Called from ``_build_turn_context`` BEFORE the offer, so a fire is
+    announced in this turn's note — never mid-turn, never by a timer.
+    """
+    try:
+        if not session_id or not is_bot_chat(session_id):
+            return None
+        store = _context_store()
+        if store is None:
+            return None
+        counts = _scheduled_tasks.observe_fires(store, session_id)
+        if counts["delivered"] or counts["failed"]:
+            logger.info("%s: scheduled fires observed for %s: %s",
+                        PLUGIN_ID, session_id, counts)
+        elif counts["errors"]:
+            logger.warning("%s: scheduled observation errors for %s: %s",
+                           PLUGIN_ID, session_id, counts["errors"])
+    except Exception as exc:
+        logger.warning("%s: scheduled observation skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _parse_tool_result(result: Any) -> Optional[dict[str, Any]]:
+    """The core tool result as a dict (JSON string or dict), else None."""
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        try:
+            data = json.loads(result)
+        except (ValueError, TypeError):
+            return None
+        return data if isinstance(data, dict) else None
+    return None
+
+
+def _observe_cronjob_call(tool_name: str, args: Any, result: Any,
+                         session_id: str, status: str) -> None:
+    """Fase 3b: mirror the core ``cronjob`` tool's result in the registry.
+
+    Only successful calls in a canonical Bot Chat session: create
+    registers the job with consent, pause/resume/remove mirror the core
+    state. A resume of a ``paused_by_stop_all`` job clears the stop-all
+    flag — the explicit resume is the user's confirmation.
+    """
+    try:
+        if (tool_name or "").strip().lower() != "cronjob":
+            return None
+        if not session_id or not is_bot_chat(session_id):
+            return None
+        if str(status or "").lower() in {"error", "blocked"}:
+            return None
+        if _delivery_backend() != "sqlite":
+            return None
+        data = args if isinstance(args, dict) else {}
+        action = str(data.get("action") or "").strip().lower()
+        if action not in {"create", "pause", "resume", "remove"}:
+            return None
+        payload = _parse_tool_result(result)
+        if payload is None or payload.get("success") is not True:
+            return None
+        store = _context_store()
+        if store is None:
+            return None
+        job = payload.get("job") if isinstance(payload.get("job"), dict) else {}
+        job_id = (str(data.get("job_id") or "").strip()
+                  or str(job.get("id") or "").strip()
+                  or str(payload.get("job_id") or "").strip())
+        if action == "create":
+            if not job_id:
+                return None
+            _scheduled_tasks.register(
+                store, job_id=job_id, session_id=session_id,
+                name=str(payload.get("name") or job.get("name") or ""),
+                prompt=str(data.get("prompt") or ""),
+                schedule_display=str(payload.get("schedule") or ""),
+                schedule_raw=str(data.get("schedule") or ""))
+            return None
+        if not job_id:
+            return None
+        if action == "pause":
+            _scheduled_tasks.note_core_pause(
+                store, job_id, reason=str(data.get("reason") or ""))
+        elif action == "resume":
+            resumed = _scheduled_tasks.note_core_resume(store, job_id)
+            if (resumed is not None and resumed[1]
+                    and store.stop_all_active(session_id)):
+                store.clear_stop_all(session_id)
+                logger.info("%s: stop-all cleared for %s by scheduled resume",
+                            PLUGIN_ID, session_id)
+        elif action == "remove":
+            _scheduled_tasks.note_core_remove(store, job_id)
+    except Exception as exc:
+        logger.debug("%s: cronjob observation skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+# ---------------------------------------------------------------- Fase 2 context
+def _context_cfg() -> dict[str, Any]:
+    raw = _cfg("context")
+    if not isinstance(raw, dict):
+        raw = {}
+    try:
+        dynamic = max(0, int(raw.get("dynamic_budget_tokens", 1500)))
+    except (TypeError, ValueError):
+        dynamic = context_budget.DYNAMIC_BUDGET_TOKENS
+    try:
+        stable = max(0, int(raw.get("stable_budget_tokens", 300)))
+    except (TypeError, ValueError):
+        stable = context_budget.STABLE_BUDGET_TOKENS
+    try:
+        per_piece = max(0, int(raw.get("per_piece_tokens", 2000)))
+    except (TypeError, ValueError):
+        per_piece = context_budget.PER_PIECE_BUDGET_TOKENS
+    return {
+        "dynamic_budget_tokens": dynamic or context_budget.DYNAMIC_BUDGET_TOKENS,
+        "stable_budget_tokens": stable or context_budget.STABLE_BUDGET_TOKENS,
+        "per_piece_tokens": per_piece or context_budget.PER_PIECE_BUDGET_TOKENS,
+        "engine_name": str(raw.get("engine_name") or "bot-chat"),
+        "incremental_note": bool(raw.get("incremental_note", True)),
+    }
+
+
+def _context_store() -> Optional[delivery_store.DeliveryStore]:
+    """Delivery store for Fase 2 state (None on the legacy json backend)."""
+    if _delivery_backend() != "sqlite":
         return None
+    try:
+        return delivery_store.DeliveryStore(
+            _delivery_db_path(), lease_seconds=_delivery_lease())
+    except Exception:
+        return None
+
+
+def _load_project_card() -> Optional[project_card.ProjectCard]:
+    """Project card (wow 7); ``None`` when the user has no card file.
+
+    The store is only touched when the file exists: merely rendering a
+    turn must not create ``deliveries.db`` for users without a card.
+    """
+    try:
+        path = project_card.card_path_for(_notify_path())
+        if not path.is_file():
+            return None
+        return project_card.load_card(path, store=_context_store())
+    except Exception as exc:
+        logger.debug("%s: project card skipped: %s", PLUGIN_ID, exc)
+        return None
+
+
+def _build_turn_context(session_id: str, turn_id: str = "") -> dict[str, Any]:
+    """Build this turn's context: stable style + dynamic sections.
+
+    Shared by the ``pre_llm_call`` hook and the delegating engine's
+    ``select_context`` (which passes a stable engine turn token,
+    ``engine:<session_id>`` — the offer is idempotent per token and
+    ``post_llm_call`` confirms every offered row when the engine is
+    active). Returns ``{"stable", "dynamic", "tokens", "dropped",
+    "over_budget", "full"}``.
+    """
     lang = _lang()
-    parts = [STYLE[lang].rstrip()]
+    stable = STYLE[lang].rstrip()
+    team_warning = ""
     try:
         team = _team()
-        guard = _cfg("guard")
-        parts.append(team_flow.team_note(
-            lang=lang,
-            enabled=bool(team["enabled"]),
-            gods=list(team["gods"]),
-            wait_for_god=bool(guard.get("wait_for_god")),
-            session_id=session_id or "",
-            db_path=_kanban_db_path(),
-            notify_path=_notify_path() if team["gods"] else None,
-        ))
+    except team_config.TeamConfigError as exc:
+        # Fase 4: the note never guesses about the team. Team parts
+        # stand down, the error is shown in the note (delivery_warning),
+        # and the guard still fails closed on tool calls (pre_tool_call).
+        logger.warning("%s: team config error: %s", PLUGIN_ID, exc)
+        team = {"enabled": False, "assignees": []}
+        team_warning = str(exc)
+    guard = _cfg("guard")
+    cfg = _context_cfg()
+    notify = _notify_path() if team["assignees"] else None
+    backend = _delivery_backend()
+    announcements: list[dict[str, str]] = []
+    delivery_warning = team_warning
+    tray = 0
+    # Fase 3b: observe scheduled fires BEFORE offering, so a fire is
+    # announced in this turn's note (never mid-turn).
+    if backend == "sqlite":
+        _observe_scheduled_fires(session_id or "")
+    if notify is not None:
+        if backend == "sqlite":
+            try:
+                announcements = team_flow.offer_for_session(
+                    notify, session_id or "", turn_id=turn_id or "",
+                    backend=backend, lease_seconds=_delivery_lease(),
+                )
+                tray = team_flow.unassigned_count(notify, backend=backend)
+            except Exception as exc:
+                # The note still renders; the failure is visible, and the
+                # deliveries are kept (they are re-offered next turn).
+                logger.warning("%s: delivery offer failed: %s", PLUGIN_ID, exc)
+                delivery_warning = str(exc)
+        else:
+            announcements = team_flow.take_announcements(notify, backend=backend)
+    elif backend == "sqlite":
+        # No teammates: the team note stays single-operator, but this
+        # session's deliveries (scheduled fires) are still offered so
+        # they reach the note.
+        try:
+            announcements = team_flow.offer_for_session(
+                _notify_path(), session_id or "", turn_id=turn_id or "",
+                backend=backend, lease_seconds=_delivery_lease(),
+            )
+        except Exception as exc:
+            logger.warning("%s: delivery offer failed: %s", PLUGIN_ID, exc)
+            delivery_warning = str(exc)
+    store = _context_store()
+    dynamic = context_sections.render_dynamic(
+        lang=lang, gods=list(team["assignees"]),
+        wait_for_god=bool(guard.get("wait_for_god")),
+        session_id=session_id or "", db_path=_kanban_db_path(),
+        notify_path=notify, card=_load_project_card(),
+        announcements=announcements, delivery_warning=delivery_warning,
+        unassigned_count=tray, store=store,
+        force_full=not cfg["incremental_note"], backend=backend,
+        budget_tokens=cfg["dynamic_budget_tokens"],
+    )
+    return {
+        "stable": stable,
+        "dynamic": dynamic["text"],
+        "tokens": dynamic["tokens"],
+        "dropped": dynamic["dropped"],
+        "over_budget": dynamic["over_budget"],
+        "full": dynamic["full"],
+    }
+
+
+def _protected_block(session_id: str) -> str:
+    """Block that must survive compaction (constraints + IDs + effects)."""
+    try:
+        return context_sections.protected_block(
+            card=_load_project_card(), session_id=session_id or "",
+            store=_context_store(), lang=_lang())
+    except Exception:
+        return ""
+
+
+def _clear_engine_fingerprint(session_id: str) -> None:
+    """Drop a session fingerprint (cancel / compaction / reset)."""
+    try:
+        store = _context_store()
+        if store is not None:
+            context_sections.clear_fingerprint(store, session_id or "")
+    except Exception:
+        pass
+
+
+def _session_id_for_key(session_key: str) -> str:
+    """Correlate an ``agent_loop_stopped`` session_key to a session id.
+
+    Best effort: the core sessions table has a ``session_key`` column; the
+    lookup is read-only (timeout 1.5 s). Returns ``""`` when it cannot
+    correlate (the lease still releases the offers).
+    """
+    key = str(session_key or "").strip()
+    if not key:
+        return ""
+    try:
+        db = _state_db()
+        if not db.is_file():
+            return ""
+        with closing(sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=1.5)) as conn:
+            row = conn.execute(
+                "SELECT id FROM sessions WHERE session_key = ? LIMIT 1", (key,)
+            ).fetchone()
+            return str(row[0] or "") if row else ""
+    except Exception:
+        return ""
+
+
+# ---------------------------------------------------------------- hooks
+def _on_pre_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> Optional[dict]:
+    """Fase 2: stable style + bounded dynamic sections (or nothing).
+
+    When the delegating engine is active for this session it supplies
+    the context via ``select_context`` and this hook stands down (the
+    two paths never duplicate). Otherwise the hook renders the stable
+    style plus the dynamic sections (project card + incremental team
+    note) within budget.
+    """
+    if not _cfg("style") or not is_bot_chat(session_id):
+        return None
+    if _context_engine.is_engine_active(session_id or ""):
+        return None
+    try:
+        built = _build_turn_context(session_id or "", turn_id or "")
     except Exception as exc:
         logger.debug("%s: team note skipped: %s", PLUGIN_ID, exc)
-    return {"context": "\n\n".join(part for part in parts if part)}
+        return None
+    if built["over_budget"]:
+        logger.warning("%s: dynamic context over budget (dropped: %s)",
+                       PLUGIN_ID, ", ".join(built["dropped"]) or "none")
+    text = "\n\n".join(part for part in (built["stable"], built["dynamic"]) if part.strip())
+    if not text.strip():
+        return None
+    return {"context": text}
+
+
+def _on_post_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> None:
+    """Confirm this turn's offered deliveries (only after the turn generated).
+
+    ``post_llm_call`` does not fire on interrupted turns (core:
+    ``if final_response and not interrupted:``), so an interrupted turn
+    simply never confirms: the lease / next turn re-offers the notice.
+    """
+    try:
+        if not session_id or not is_bot_chat(session_id):
+            return None
+        if _delivery_backend() != "sqlite":
+            return None
+        if _context_engine.is_engine_active(session_id):
+            # The engine offered with its stable token, not the hook's
+            # turn id: confirm every offered row of the session.
+            team_flow.confirm_turn(_notify_path(), session_id, None, backend="sqlite")
+        else:
+            team_flow.confirm_turn(_notify_path(), session_id, turn_id or None, backend="sqlite")
+        # Fase 2: the rows confirmed this turn join the fingerprint's
+        # confirmed list, so the next delta does not re-render them.
+        try:
+            store = _context_store()
+            if store is not None:
+                context_sections.mark_confirmed(store, session_id)
+        except Exception as exc:
+            logger.debug("%s: fingerprint confirm skipped: %s", PLUGIN_ID, exc)
+        # Fase 1b: the turn just ended — a good moment to try the durable
+        # write for other pending rows of this session (best effort; the
+        # offer path already delivered this turn's rows).
+        _relay_pending(session_id)
+    except Exception as exc:
+        logger.warning("%s: delivery confirm failed: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _on_agent_loop_stopped(session_key: str = "", **kw: Any) -> None:
+    """Best-effort early release of a session's offers (optimization only).
+
+    The lease is the mechanism (Gustavo, checkpoint Q1): if this hook never
+    fires, or the session cannot be correlated, offers are still released
+    by lease expiry and by the next turn of the same session. This handler
+    only makes the release faster when it can correlate the session.
+    """
+    try:
+        sid = str(kw.get("session_id") or "") or _session_id_for_key(session_key)
+        if not sid:
+            logger.debug("%s: agent_loop_stopped without a correlatable session; "
+                         "the lease will release the offers", PLUGIN_ID)
+            return None
+        # Fase 2: a cancelled turn confirms nothing — drop the note
+        # fingerprint so the next turn rebuilds the full note from
+        # durable state (reconstruction after cancellation).
+        _clear_engine_fingerprint(sid)
+        team_flow.release_session(_notify_path(), sid, backend=_delivery_backend())
+        if _delivery_backend() == "sqlite":
+            # Fase 1b: the loop stopped — sweep the outbox (expired leases,
+            # retention prune) and try the durable relay for this session.
+            try:
+                team_flow.maintenance(_notify_path(),
+                                      retention_days=_retention_days())
+            except Exception as exc:
+                logger.warning("%s: delivery maintenance skipped: %s", PLUGIN_ID, exc)
+            _relay_pending(sid)
+    except Exception as exc:
+        logger.debug("%s: agent_loop_stopped release skipped: %s", PLUGIN_ID, exc)
+    return None
 
 
 def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "",
@@ -456,26 +950,81 @@ def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "
             tool_name, args,
             kanban_lock=bool(guard.get("kanban_lock")),
             wait_for_god=bool(guard.get("wait_for_god")),
-            gods=list(team["gods"]),
+            gods=list(team["assignees"]),
             db_path=_kanban_db_path(),
             session_id=session_id or "",
             worker_task=os.environ.get("HERMES_KANBAN_TASK", "").strip(),
+            turn_id=turn_id or "",
+            notify_path=_notify_path(),
+            backend=_delivery_backend(),
+            max_per_session=_background_cfg()["max_per_session"],
         )
         if decision.get("rule"):
             logger.info("%s: blocked %s (%s)", PLUGIN_ID, tool_name, decision["rule"])
             return {"action": "block", "message": block_message(decision["rule"], decision.get("detail") or "")}
         if decision.get("modify"):
             return {"action": "modify", "args": decision["modify"]}
+    except team_config.TeamConfigError as exc:
+        # Fase 4: a contradictory team config fails CLOSED, with the
+        # explanation in the message — never a silent pick, never a
+        # guard bypass (the generic except below would return None).
+        logger.warning("%s: team config error: %s", PLUGIN_ID, exc)
+        return {"action": "block", "message": str(exc)}
     except Exception as exc:
         logger.debug("%s: guard error: %s", PLUGIN_ID, exc)
     return None
 
 
+# Tools with side effects (minimal log, Fase 2): deletes, destructive
+# git and protected pushes are caught by command content in the guard,
+# so the log keys on tool names plus the kanban mutations.
+_EFFECTFUL_TOOLS = {
+    "delete_file", "remove_file", "rm", "send_message", "react_to_message",
+    "kanban_create", "kanban_update", "kanban_close", "kanban_delete",
+    "kanban_move", "kanban_assign",
+}
+
+
+def _record_tool_effect(tool_name: str, args: Any, session_id: str) -> None:
+    """Append one entry to the minimal tool-effects log (best effort)."""
+    name = (tool_name or "").strip().lower()
+    if not name or not session_id:
+        return
+    data = args if isinstance(args, dict) else {}
+    effectful = name in _EFFECTFUL_TOOLS
+    if not effectful and name == "write_file" and data.get("delete"):
+        effectful = True
+    if not effectful and name.startswith("mcp_") and re.search(
+            r"(send|post|reply|publish|tweet|email|message_create|create_message)", name):
+        effectful = True
+    if not effectful:
+        return
+    detail = str(data.get("title") or data.get("path") or data.get("file_path")
+                 or data.get("command") or data.get("cmd") or "")[:240]
+    try:
+        store = _context_store()
+        if store is not None:
+            store.record_tool_effect(session_id, name, detail)
+    except Exception:
+        pass
+
+
 def _on_post_tool_call(tool_name: str = "", args: Any = None, result: Any = None,
                        session_id: str = "", status: str = "", **kw: Any) -> None:
+    # Fase 2: minimal log of tools with side effects (survives
+    # compaction in the protected block). Best effort, never raises.
+    try:
+        if str(status or kw.get("status") or "").lower() not in {"error", "blocked"}:
+            if _in_scope(session_id, kw.get("parent_session_id")):
+                _record_tool_effect(tool_name or "", args, session_id or "")
+    except Exception:
+        pass
+    # Fase 3b: mirror the core cronjob tool in the scheduled registry.
+    _observe_cronjob_call(tool_name or "", args, result,
+                          session_id or "", str(status or kw.get("status") or ""))
     try:
         team = _team()
-        if not team["gods"]:
+        if not team["assignees"]:
             return None
         if str(status or kw.get("status") or "").lower() in {"error", "blocked"}:
             return None
@@ -493,27 +1042,119 @@ def _on_post_tool_call(tool_name: str = "", args: Any = None, result: Any = None
             assignee=str(data.get("assignee") or ""),
             idempotency=str(data.get("idempotency_key") or data.get("idempotencyKey") or ""),
             result=result,
-            gods=list(team["gods"]),
+            gods=list(team["assignees"]),
+            backend=_delivery_backend(),
+            resource=team_flow.resource_key(data),
         )
     except Exception as exc:
-        logger.debug("%s: create memory skipped: %s", PLUGIN_ID, exc)
+        logger.warning("%s: create memory skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _coerce_run_id(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    if text.lstrip("-").isdigit():
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _on_kanban_claimed(task_id: str = "", assignee: str = "", run_id: Any = None, **kw: Any) -> None:
+    """Fase 3: the dispatcher claimed the card → ``queued`` (en cola).
+
+    Fires in the dispatcher, right before spawn: the handler stays
+    fast (one short store transaction, no relay, no network).
+    """
+    try:
+        team = _team()
+        if not team["assignees"]:
+            return None
+        team_flow.note_task_claimed(
+            _notify_path(),
+            task_id=str(task_id or kw.get("task_id") or ""),
+            assignee=str(assignee or kw.get("assignee") or ""),
+            run_id=_coerce_run_id(run_id if run_id is not None else kw.get("run_id")),
+            gods=list(team["assignees"]),
+            backend=_delivery_backend(),
+        )
+    except Exception as exc:
+        logger.warning("%s: claimed note skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _on_kanban_worker_spawned(task_id: str = "", run_id: Any = None, **kw: Any) -> None:
+    """Fase 3: the worker process spawned → ``working`` (trabajando).
+
+    Fires in the dispatcher, inside the board's dispatch lock: the
+    handler stays fast (one short store transaction, nothing else).
+    """
+    try:
+        team = _team()
+        if not team["assignees"]:
+            return None
+        team_flow.note_worker_spawned(
+            _notify_path(),
+            task_id=str(task_id or kw.get("task_id") or ""),
+            run_id=_coerce_run_id(run_id if run_id is not None else kw.get("run_id")),
+            backend=_delivery_backend(),
+        )
+    except Exception as exc:
+        logger.warning("%s: spawned note skipped: %s", PLUGIN_ID, exc)
     return None
 
 
 def _on_kanban_completed(task_id: str = "", assignee: str = "", summary: str = "", **kw: Any) -> None:
     try:
         team = _team()
-        if not team["gods"]:
+        if not team["assignees"]:
             return None
-        team_flow.record_delivery(
+        # Fase 3: the delivery is recorded first; the task only becomes
+        # ``ready`` when the row was persisted (no false listo).
+        team_flow.note_task_completed(
             _notify_path(),
             task_id=str(task_id or kw.get("task_id") or ""),
             assignee=str(assignee or kw.get("assignee") or ""),
             summary=str(summary or kw.get("summary") or kw.get("result") or ""),
-            gods=list(team["gods"]),
+            gods=list(team["assignees"]),
+            backend=_delivery_backend(),
+            lease_seconds=_delivery_lease(),
         )
+        # Fase 1b: the worker just recorded the result — try the durable
+        # write now (best effort; the offer path covers a miss).
+        _relay_pending()
     except Exception as exc:
-        logger.debug("%s: delivery note skipped: %s", PLUGIN_ID, exc)
+        logger.warning("%s: delivery note skipped: %s", PLUGIN_ID, exc)
+    return None
+
+
+def _on_kanban_blocked(task_id: str = "", assignee: str = "", reason: str = "", **kw: Any) -> None:
+    """Same path as completed, with kind 'blocked' (wow 5: honest states).
+
+    Fase 3: when the chat blocked the card (a cancel marker from the
+    guard), the task becomes ``cancelled`` instead of ``blocked``.
+    """
+    try:
+        team = _team()
+        if not team["assignees"]:
+            return None
+        team_flow.note_task_blocked(
+            _notify_path(),
+            task_id=str(task_id or kw.get("task_id") or ""),
+            assignee=str(assignee or kw.get("assignee") or ""),
+            reason=str(reason or kw.get("reason") or kw.get("summary") or ""),
+            gods=list(team["assignees"]),
+            backend=_delivery_backend(),
+            lease_seconds=_delivery_lease(),
+        )
+        _relay_pending()
+    except Exception as exc:
+        logger.warning("%s: blocked note skipped: %s", PLUGIN_ID, exc)
     return None
 
 
@@ -523,4 +1164,61 @@ def register(ctx: Any) -> None:
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
+    ctx.register_hook("post_llm_call", _on_post_llm_call)
+    ctx.register_hook("agent_loop_stopped", _on_agent_loop_stopped)
     ctx.register_hook("kanban_task_completed", _on_kanban_completed)
+    ctx.register_hook("kanban_task_blocked", _on_kanban_blocked)
+    ctx.register_hook("kanban_task_claimed", _on_kanban_claimed)
+    ctx.register_hook("on_kanban_worker_spawned", _on_kanban_worker_spawned)
+    # Fase 4: validate the team config LOUDLY at load, but never raise
+    # here — a raising register() would disable the whole plugin (guard
+    # included). The error stays visible in the log, and every tool call
+    # in scope fails closed with the explanation (pre_tool_call).
+    try:
+        resolved = _team()
+        if resolved["legacy_gods"]:
+            logger.warning(
+                "%s: team.gods is deprecated; use team.assignees instead "
+                "(same list, new key). team.gods still works for now.",
+                PLUGIN_ID)
+    except team_config.TeamConfigError as exc:
+        logger.error("%s: invalid team config (team features disabled "
+                     "until fixed): %s", PLUGIN_ID, exc)
+    except Exception as exc:
+        logger.debug("%s: team config check skipped: %s", PLUGIN_ID, exc)
+    # Fase 1b startup check: the delivery store must live on a local disk,
+    # never in a synced folder or on a network path. A bad path is a
+    # warning, not a crash — deliveries are kept and re-offered.
+    try:
+        if _team()["assignees"]:
+            problem = team_flow.verify_store_startup(
+                _notify_path(), lease_seconds=_delivery_lease())
+            if problem:
+                logger.warning("%s: delivery store startup check: %s",
+                               PLUGIN_ID, problem)
+    except Exception as exc:
+        logger.warning("%s: delivery store startup check skipped: %s",
+                       PLUGIN_ID, exc)
+    # Fase 2 (B4 Opción 0): register the delegating context engine. The
+    # core keeps a single slot and rejects a second registration with a
+    # warning; an engine without the core's register hook is a no-op.
+    # The engine only becomes active when the user sets
+    # ``context.engine: bot-chat`` in the core config; until then the
+    # pre_llm_call path stays active (fail-open).
+    try:
+        if hasattr(ctx, "register_context_engine"):
+            engine = _context_engine.BotChatContextEngine(
+                build_context=lambda sid: _build_turn_context(
+                    sid, turn_id=f"engine:{sid}"),
+                protected_block=_protected_block,
+                clear_fingerprint=_clear_engine_fingerprint,
+            )
+            ctx.register_context_engine(engine)
+            logger.info(
+                "%s: delegating context engine registered (%s); set "
+                "context.engine: %s in the core config to activate it",
+                PLUGIN_ID, _context_engine.ENGINE_NAME,
+                _context_cfg()["engine_name"])
+    except Exception as exc:
+        logger.debug("%s: context engine registration skipped: %s",
+                     PLUGIN_ID, exc)
