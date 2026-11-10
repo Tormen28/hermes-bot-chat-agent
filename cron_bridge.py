@@ -6,11 +6,11 @@ functions.
 
 Two modes, same durable truth:
 
-- ``"core"``: the ``cron`` package is importable (the plugin runs inside
-  Hermes). Reads go through ``cron.jobs`` / ``cron.executions`` and writes
-  (pause/resume/remove) through ``cron.jobs``. This is the production mode.
-- ``"disk"``: the core is not importable (this VM's system Python has none
-  of the core's dependencies). Reads go straight to the same durable files
+- ``"registry"``: the plugin runs inside Hermes and the tool registry has
+  ``cronjob_manage``. Reads go to the durable files; writes (pause/resume/
+  remove) go through that core tool (public ``tools.registry`` surface, no
+  private ``cron.*`` imports). This is the production mode.
+- ``"disk"``: the tool is not available. Reads go straight to the same durable files
   the core's functions read — ``<home>/cron/executions.db`` (read-only
   SQLite, the same pattern the plugin already uses for ``state.db`` /
   ``kanban.db``) and ``<home>/cron/output/<job_id>/*.md``. Writes raise
@@ -149,60 +149,6 @@ class CronAdapter:
         raise NotImplementedError
 
 
-class _CoreAdapter(CronAdapter):
-    """Reads/writes through the real ``cron`` package."""
-
-    mode = "core"
-
-    def __init__(self, home: Path, jobs_mod: Any, executions_mod: Any):
-        self.home = home
-        self._jobs = jobs_mod
-        self._executions = executions_mod
-
-    def _executions_db(self) -> Path:
-        return self.home / "cron" / "executions.db"
-
-    def get_job(self, job_id: str) -> Optional[dict[str, Any]]:
-        if not (self.home / "cron" / "jobs.json").is_file():
-            return None
-        try:
-            return self._jobs.get_job(str(job_id or ""))
-        except Exception as exc:  # noqa: BLE001 - a failed read never raises
-            logger.debug("cron_bridge: get_job failed: %s", exc)
-            return None
-
-    def pause_job(self, job_id: str, reason: Optional[str] = None) -> Optional[dict[str, Any]]:
-        return self._jobs.pause_job(str(job_id or ""), reason=reason)
-
-    def resume_job(self, job_id: str) -> Optional[dict[str, Any]]:
-        return self._jobs.resume_job(str(job_id or ""))
-
-    def remove_job(self, job_id: str) -> bool:
-        return bool(self._jobs.remove_job(str(job_id or "")))
-
-    def terminal_executions(self, job_id: str, limit: int = 50) -> list[dict[str, Any]]:
-        if not self._executions_db().is_file():
-            return []
-        try:
-            rows = self._executions.list_executions(
-                job_id=str(job_id or ""), limit=max(1, int(limit)))
-        except Exception as exc:  # noqa: BLE001 - a failed read never raises
-            logger.debug("cron_bridge: list_executions failed: %s", exc)
-            return []
-        return [_normalize_execution(r) for r in rows
-                if str(r.get("status") or "") in _TERMINAL_STATUSES]
-
-    def latest_output(self, job_id: str) -> str:
-        jid = _safe_job_id(job_id)
-        if not jid:
-            return ""
-        try:
-            out_dir = self._jobs._job_output_dir(jid)
-        except Exception:
-            out_dir = self.home / "cron" / "output" / jid
-        return _read_newest_output(Path(out_dir))
-
-
 class _DiskAdapter(CronAdapter):
     """Reads the same durable files directly (stdlib only). No writes."""
 
@@ -278,6 +224,41 @@ class _DiskAdapter(CronAdapter):
         return _read_newest_output(self.home / "cron" / "output" / jid)
 
 
+class _RegistryAdapter(_DiskAdapter):
+    """Reads like the disk adapter; writes (pause/resume/remove) go through the core's own
+    ``cronjob_manage`` tool, called via the public ``tools.registry`` surface. The plugin never
+    writes ``jobs.json`` itself and imports no private ``cron.*`` module."""
+
+    mode = "registry"
+
+    def __init__(self, home: Path, registry: Any):
+        super().__init__(home)
+        self._registry = registry
+
+    def _call(self, args: dict[str, Any]) -> dict[str, Any]:
+        raw = self._registry.dispatch("cronjob_manage", args)
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+        except (TypeError, ValueError):
+            data = {}
+        if not isinstance(data, dict) or data.get("error") or data.get("success") is False:
+            detail = data.get("error") if isinstance(data, dict) else ""
+            raise CronUnavailable(f"cronjob_manage {args.get('action')} failed: {detail or raw!r}")
+        return data
+
+    def pause_job(self, job_id: str, reason: Optional[str] = None) -> Optional[dict[str, Any]]:
+        self._call({"action": "pause", "job_id": str(job_id or ""), "reason": reason or ""})
+        return self.get_job(job_id)
+
+    def resume_job(self, job_id: str) -> Optional[dict[str, Any]]:
+        self._call({"action": "resume", "job_id": str(job_id or "")})
+        return self.get_job(job_id)
+
+    def remove_job(self, job_id: str) -> bool:
+        self._call({"action": "remove", "job_id": str(job_id or "")})
+        return True
+
+
 def _normalize_execution(row: Any) -> dict[str, Any]:
     data = dict(row) if isinstance(row, dict) else {}
     return {
@@ -305,12 +286,13 @@ def _read_newest_output(output_dir: Path) -> str:
 
 
 def default_adapter(home: Any = None) -> CronAdapter:
-    """The core adapter when the ``cron`` package imports, else disk mode."""
+    """Registry-backed writes when the host's tool registry has ``cronjob_manage``, else disk mode
+    (reads only; writes raise :class:`CronUnavailable`)."""
     resolved = _resolve_home(home)
     try:
-        import cron.executions as cex
-        import cron.jobs as cj
+        from tools.registry import registry  # public plugin surface (catalog rule 9)
+        if registry.get_entry("cronjob_manage") is not None:
+            return _RegistryAdapter(resolved, registry)
     except Exception as exc:  # noqa: BLE001 - disk mode is the fallback
-        logger.debug("cron_bridge: core not importable (%s); disk mode", exc)
-        return _DiskAdapter(resolved)
-    return _CoreAdapter(resolved, cj, cex)
+        logger.debug("cron_bridge: tool registry not available (%s); disk mode", exc)
+    return _DiskAdapter(resolved)

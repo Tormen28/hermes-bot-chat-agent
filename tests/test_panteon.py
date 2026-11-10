@@ -249,6 +249,9 @@ class TestAgainstRealCoreProfiles(unittest.TestCase):
     """Creates real profiles through the core's own API in a throw-away HERMES_HOME."""
 
     def test_create_profiles_end_to_end(self):
+        """The Desktop half creates profiles through the gateway's profiles.create. Here a stand-in creator
+        uses the core's own profile API, to prove the plugin's FS-based exists/list checks agree with the
+        real on-disk layout and that existing profiles are never touched."""
         home = tempfile.mkdtemp(prefix="bca-panteon-real-")
         core = os.environ.get("HERMES_AGENT_CHECKOUT", "")
         code = (
@@ -256,24 +259,28 @@ class TestAgainstRealCoreProfiles(unittest.TestCase):
             f"sys.path.insert(0, {str(ROOT)!r}); sys.path.insert(0, {core!r})\n"
             "import panteon as pt\n"
             "from hermes_cli import profiles as P\n"
-            "r1 = pt.handle('create daedalus iris confirm', lang='en', current_team=[])\n"
-            "r2 = pt.handle('create daedalus confirm', lang='en', current_team=[])\n"
+            "def creator(name, *, soul='', description='', **kw):\n"
+            "    P.create_profile(name, clone_from='default', clone_config=False, no_alias=True)\n"
+            "    d = P.get_profile_dir(name); (d / 'SOUL.md').write_text(soul, encoding='utf-8')\n"
+            "    return {'ok': True}\n"
+            "r1 = pt.handle('create daedalus iris confirm', lang='en', current_team=[], creator=creator)\n"
+            "r2 = pt.handle('create daedalus confirm', lang='en', current_team=[], creator=creator)\n"
             "d = P.get_profile_dir('daedalus')\n"
-            "print(json.dumps({'r1': r1, 'r2': r2, 'names': P.list_profile_names(),\n"
-            "  'soul': (d / 'SOUL.md').read_text(encoding='utf-8')[:80]}))\n")
+            "print(json.dumps({'r1': r1, 'r2': r2, 'names': P.list_profile_names(), 'mine': pt.core_list_names(),\n"
+            "  'exists': pt.core_exists('daedalus'), 'soul': (d / 'SOUL.md').read_text(encoding='utf-8')[:80]}))\n")
         env = {**os.environ, "HERMES_HOME": home}
         proc = subprocess.run([REAL_PY, "-c", code], capture_output=True, text=True, env=env, timeout=120)
         self.assertEqual(proc.returncode, 0, proc.stderr[-800:])
         out = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertIn("Created: daedalus, iris", out["r1"])
         self.assertIn("Already existed (left untouched): daedalus", out["r2"])
-        self.assertIn("daedalus", out["names"])
-        self.assertIn("iris", out["names"])
+        self.assertIn("daedalus", out["names"]); self.assertIn("iris", out["names"])
+        self.assertIn("daedalus", out["mine"]); self.assertTrue(out["exists"])
         self.assertTrue(out["soul"].startswith("# Daedalus"), out["soul"])
 
-
-    def test_slash_command_full_flow_through_the_real_plugin_manager(self):
-        """Plugin loaded by the core's PluginManager: plan -> create -> team, real profiles + real config."""
+    def test_slash_command_through_the_real_plugin_manager_without_desktop_half(self):
+        """Plugin loaded by the core's PluginManager. With the Desktop half off, /pantheon create never
+        creates anything: it prints the terminal lines, and the team is untouched."""
         core = os.environ.get("HERMES_AGENT_CHECKOUT", "")
         proc = subprocess.run([REAL_PY, str(ROOT / "tests" / "_real_core_load.py"), core, "--panteon"],
                               capture_output=True, text=True, timeout=180)
@@ -283,11 +290,9 @@ class TestAgainstRealCoreProfiles(unittest.TestCase):
         self.assertTrue(out["loaded"] and not out["error"])
         self.assertIn("Would create", out["panteon"]["create_no_confirm"])
         self.assertIn("do not exist yet", out["panteon"]["team_missing"])
-        self.assertIn("Created: daedalus, iris", out["panteon"]["create"])
-        self.assertEqual(out["profiles_dirs"], ["daedalus", "iris"])
-        self.assertEqual(out["team_seen_by_plugin"], ["daedalus", "iris"])
-        team = out["config_after"]["plugins"]["entries"]["bot-chat-agent"]["settings"]["team"]
-        self.assertEqual(team["assignees"], ["daedalus", "iris"])
+        self.assertIn("Desktop half", out["panteon"]["create"])
+        self.assertIn("hermes profile create", out["panteon"]["create"])
+        self.assertEqual(out["profiles_dirs"], [])
 
 
 if __name__ == "__main__":

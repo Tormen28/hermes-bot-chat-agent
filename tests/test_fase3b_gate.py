@@ -577,7 +577,7 @@ class TestFase3bGate(unittest.TestCase):
         disk_execs = self.disk.terminal_executions(jobs[0]["id"])
         disk_out = self.disk.latest_output(jobs[0]["id"])
         bridged = self.driver.call({"cmd": "bridge", "job_id": jobs[0]["id"]})
-        self.assertEqual(bridged["mode"], "core")
+        self.assertIn(bridged["mode"], ("registry", "disk"))
         self.assertEqual(
             [e["id"] for e in bridged["executions"]],
             [e["id"] for e in disk_execs],

@@ -1,10 +1,9 @@
 """BotChat delegating context engine (Fase 2, B4 Opción 0).
 
-No core change: Bot Chat registers a ``ContextEngine`` that delegates
-``compress`` / ``should_compress`` / ``update_from_response`` to an
-internal ``ContextCompressor`` and only overrides ``select_context``
-(bounded plugin context per request, never persisted in the transcript)
-and ``on_turn_complete``.
+No core change: Bot Chat registers a ``ContextEngine`` (public ``agent.context_engine``)
+that compacts with its own deterministic ``LocalCompactor`` (no private core import, no LLM
+call) and overrides ``select_context`` (bounded plugin context per request, never persisted
+in the transcript) and ``on_turn_complete``.
 
 Activation: the user sets ``context.engine: bot-chat`` in the core
 config. Without that, the engine stays registered but inactive and the
@@ -115,8 +114,100 @@ def _style_markers() -> tuple[str, ...]:
     return ("[Bot Chat style]", "[Estilo Bot Chat]")
 
 
+class LocalCompactor:
+    """Deterministic, dependency-free compaction (no LLM call).
+
+    Keeps the first ``protect_first_n`` and last ``protect_last_n`` messages and replaces the middle
+    with ONE user note: the protected block / memory context plus a one-line digest per dropped
+    message. It never splits an assistant tool call from its tool results. This is weaker than a
+    model-written summary: it trades quality for staying inside public plugin surfaces and for never
+    making a network call. Whether it speeds up a long session is NOT measured yet.
+    """
+
+    NOTE_HEADING = "[Bot Chat: earlier turns compacted]"
+    DIGEST_LINE_CHARS = 140
+    NOTE_MAX_CHARS = 6000
+
+    def __init__(self, *, model: str = "", context_length: int = 0, threshold_percent: float = 0.75,
+                 protect_first_n: int = 3, protect_last_n: int = 6):
+        self.model = model
+        self.context_length = int(context_length or 0)
+        self.threshold_percent = float(threshold_percent)
+        self.protect_first_n = int(protect_first_n)
+        self.protect_last_n = int(protect_last_n)
+        self.last_prompt_tokens = 0
+        self.last_completion_tokens = 0
+        self.last_total_tokens = 0
+        self.compression_count = 0
+
+    @property
+    def threshold_tokens(self) -> int:
+        return int(self.context_length * self.threshold_percent) if self.context_length > 0 else 0
+
+    def update_model(self, model: str, context_length: int, **_kw: Any) -> None:
+        self.model = str(model or self.model)
+        self.context_length = int(context_length or 0)
+
+    def update_from_response(self, usage: dict[str, Any]) -> None:
+        usage = usage or {}
+        self.last_prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        self.last_completion_tokens = int(usage.get("completion_tokens") or 0)
+        self.last_total_tokens = int(usage.get("total_tokens")
+                                     or self.last_prompt_tokens + self.last_completion_tokens)
+
+    def should_compress(self, prompt_tokens: int | None = None) -> bool:
+        limit = self.threshold_tokens
+        used = int(prompt_tokens if prompt_tokens is not None else self.last_prompt_tokens)
+        return limit > 0 and used >= limit
+
+    @staticmethod
+    def _text(msg: Any) -> str:
+        content = msg.get("content") if isinstance(msg, dict) else ""
+        if isinstance(content, list):
+            content = " ".join(str(p.get("text") or "") for p in content if isinstance(p, dict))
+        return " ".join(str(content or "").split())
+
+    def compress(self, messages: list[dict[str, Any]], current_tokens: Optional[int] = None,
+                 focus_topic: Optional[str] = None, force: bool = False,
+                 memory_context: str = "") -> list[dict[str, Any]]:
+        msgs = list(messages or [])
+        head_n = max(0, self.protect_first_n)
+        tail_start = len(msgs) - max(1, self.protect_last_n)
+        # never start the kept tail on a tool result: pull its assistant call in with it
+        while 0 < tail_start < len(msgs) and isinstance(msgs[tail_start], dict) \
+                and msgs[tail_start].get("role") == "tool":
+            tail_start -= 1
+        if tail_start <= head_n:
+            return msgs
+        # never end the head on an assistant message whose tool results fall in the dropped middle
+        while head_n > 0 and isinstance(msgs[head_n - 1], dict) and msgs[head_n - 1].get("tool_calls"):
+            head_n -= 1
+        middle = msgs[head_n:tail_start]
+        if not middle:
+            return msgs
+        lines = []
+        for m in middle:
+            role = str(m.get("role") or "?") if isinstance(m, dict) else "?"
+            text = self._text(m)
+            if not text and isinstance(m, dict) and m.get("tool_calls"):
+                text = "(tool call)"
+            if text:
+                lines.append(f"- {role}: {text[:self.DIGEST_LINE_CHARS]}")
+        parts = [self.NOTE_HEADING]
+        if focus_topic:
+            parts.append(f"Focus: {focus_topic}")
+        if memory_context.strip():
+            parts.append(memory_context.strip())
+        parts.append(f"{len(middle)} earlier messages were dropped. One-line digest:")
+        note = "\n".join(parts) + "\n" + "\n".join(lines)
+        if len(note) > self.NOTE_MAX_CHARS:
+            note = note[:self.NOTE_MAX_CHARS].rstrip() + "\n- …"
+        self.compression_count += 1
+        return msgs[:head_n] + [{"role": "user", "content": note}] + msgs[tail_start:]
+
+
 class BotChatContextEngine(_Base):  # type: ignore[misc]
-    """Delegating engine: bounded plugin context, core compression."""
+    """Engine: bounded plugin context, plugin-local compaction."""
 
     def __init__(self, *, model: str = "",
                  build_context: Optional[Callable[..., dict[str, Any]]] = None,
@@ -191,23 +282,11 @@ class BotChatContextEngine(_Base):  # type: ignore[misc]
 
     # ------------------------------------------------------------------ delegate
     def _delegate_compressor(self) -> Any:
-        """Internal ContextCompressor (lazy; None when unavailable)."""
-        if self._delegate is not None or self._delegate_failed:
-            return self._delegate
-        try:
-            from agent.context_compressor import ContextCompressor  # type: ignore
-        except Exception as exc:  # noqa: BLE001 - no core on path
-            self._delegate_failed = True
-            logger.warning("bot-chat-agent: ContextCompressor unavailable (%s); "
-                           "compaction delegates to no-op", exc)
-            return None
-        try:
-            self._delegate = ContextCompressor(model=self._model or "unknown")
-        except Exception as exc:  # noqa: BLE001 - never break the host
-            self._delegate_failed = True
-            logger.warning("bot-chat-agent: ContextCompressor failed (%s); "
-                           "compaction delegates to no-op", exc)
-            return None
+        """Compactor used by ``compress`` (lazy). A host or test may inject ``_delegate``; otherwise
+        the plugin's own deterministic :class:`LocalCompactor` is used. The core's private
+        ``ContextCompressor`` is deliberately not imported (catalog rule 9: public surfaces only)."""
+        if self._delegate is None:
+            self._delegate = LocalCompactor(model=self._model or "unknown")
         return self._delegate
 
     # ------------------------------------------------------------------ core API

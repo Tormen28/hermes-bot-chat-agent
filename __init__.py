@@ -41,6 +41,8 @@ import bot_chat_memory as _bot_chat_memory  # noqa: E402
 import memory_command as _memory_command  # noqa: E402
 import status_panel as _status_panel  # noqa: E402
 import panteon as _panteon  # noqa: E402
+import panteon_auto as _panteon_auto  # noqa: E402
+import dm_delegations as _dm_delegations  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +141,8 @@ DEFAULTS: dict[str, Any] = {
     # `/panteon create ... confirm`. `prefix` is prepended to preset profile names;
     # `roster_in_context` adds one short "who does what" line when team.assignees
     # contains preset ids. Custom profile names never get an invented role.
-    "panteon": {"prefix": "", "roster_in_context": True},
+    "panteon": {"prefix": "", "roster_in_context": True, "auto": True,
+                "first_run_suggestion": True, "create_wait_seconds": 8},
     "status_panel": {"enabled": True, "stalled_after_seconds": 120, "bot_name": ""},
     # Fase 3 background work (route A): visible queue per session (plan
     # §6: max 10 open background tasks). The dispatcher of the core
@@ -878,6 +881,15 @@ def _session_bot_name(session_id: str) -> str:
 
 
 def _collect_status_tasks(session_id: str = "") -> list[dict[str, Any]]:
+    rows = _collect_kanban_tasks(session_id)
+    try:
+        rows = list(rows) + _dm_delegations.as_status_tasks(session_id)
+    except Exception:
+        pass
+    return rows
+
+
+def _collect_kanban_tasks(session_id: str = "") -> list[dict[str, Any]]:
     try:
         cs = _context_store()
         if cs is None:
@@ -1130,8 +1142,51 @@ def _session_id_for_key(session_key: str) -> str:
 
 
 # ---------------------------------------------------------------- hooks
+def _coordinator_profile() -> str:
+    """Name of the profile this plugin runs in (``default`` for the main one). Public helper only."""
+    try:
+        from hermes_constants import get_hermes_home, profile_name_for_home
+        return str(profile_name_for_home(get_hermes_home()) or "default")
+    except Exception:
+        return "default"
+
+
+def _panteon_auto_context(session_id: str, user_message: Any) -> str:
+    """Panteón, almost automatic: the one-line offer, the yes, the delegation hand-off.
+
+    Fail-open and cheap: returns ``""`` unless an offer, a yes/no to an offer, or a finished
+    creation request needs the coordinator's attention this turn."""
+    try:
+        cfg = _panteon_cfg()
+        if not cfg.get("auto", True):
+            return ""
+        text = user_message if isinstance(user_message, str) else ""
+        if isinstance(user_message, list):
+            text = " ".join(str(p.get("text") or "") for p in user_message if isinstance(p, dict))
+        prefix = cfg["prefix"]
+        mine = _coordinator_profile()
+        god_names = {_panteon.profile_name(i, prefix) for i in _panteon.PRESET_ORDER}
+        try:
+            team = [str(x) for x in (_team().get("assignees") or [])]
+        except Exception:
+            team = []
+        res = _panteon_auto.step(
+            session_id or "", text, lang=_lang(), prefix=prefix, team=team,
+            existing=_panteon.core_list_names() or [], coordinator=mine,
+            cfg=cfg, is_god_chat=mine.lower() in god_names,
+            delegated=lambda name, since: _dm_delegations.has_call_to(name, since))
+        add = [n for n in res.get("team_add", []) if n and n.lower() not in {t.lower() for t in team}]
+        if add:
+            _set_team_assignees(team + add)
+        return str(res.get("context") or "")
+    except Exception as exc:
+        logger.debug("%s: panteón auto skipped: %s", PLUGIN_ID, exc)
+        return ""
+
+
 def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
-                     conversation_history: Any = None, **_: Any) -> Optional[dict]:
+                     conversation_history: Any = None, user_message: Any = None,
+                     **_: Any) -> Optional[dict]:
     """Fase 2: stable style + bounded dynamic sections (or nothing).
 
     When the delegating engine is active for this session it supplies
@@ -1142,8 +1197,14 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
     """
     if not _cfg("style") or not is_bot_chat(session_id):
         return None
+    try:  # a finished message_agent reply arrives as a completion notice in the next turn
+        if _dm_delegations.apply_completion(user_message if isinstance(user_message, str) else ""):
+            _publish_status(session_id or "")
+    except Exception as exc:
+        logger.debug("%s: dm completion skipped: %s", PLUGIN_ID, exc)
+    panteon_note = _panteon_auto_context(session_id or "", user_message)
     if _context_engine.is_engine_active(session_id or ""):
-        return None
+        return {"context": panteon_note} if panteon_note else None
     try:
         built = _build_turn_context(session_id or "", turn_id or "",
                                     messages=conversation_history)
@@ -1158,6 +1219,8 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
                                            built.get("pending", ""),
                                            built.get("memory", ""), note)
                          if part and str(part).strip())
+    if panteon_note:
+        text = (text + "\n\n" + panteon_note).strip()
     panel = _status_header(session_id or "", text)
     if panel:
         text = panel + "\n\n" + text
@@ -1339,6 +1402,14 @@ def _post_tool_call_observe(tool_name: str = "", args: Any = None, result: Any =
                 _record_tool_effect(tool_name or "", args, session_id or "")
     except Exception:
         pass
+    # message_agent delegations (status card): the ack is the real evidence a hand-off happened.
+    try:
+        if (tool_name or "").strip().lower() == "message_agent" and _in_scope(session_id, kw.get("parent_session_id")):
+            _dm_delegations.record_call(args if args is not None else kw.get("tool_args"), result,
+                                        session_id=session_id or "", origin=_session_bot_name(session_id or ""))
+            _publish_status(session_id or "")
+    except Exception as exc:
+        logger.debug("%s: message_agent observe skipped: %s", PLUGIN_ID, exc)
     # Fase 3b: mirror the core cronjob tool in the scheduled registry.
     _observe_cronjob_call(tool_name or "", args, result,
                           session_id or "", str(status or kw.get("status") or ""))
@@ -1600,7 +1671,8 @@ def _on_memory_alias(raw_args: str = "", session_id: str = "", **kw: Any) -> str
 
 def _panteon_cfg() -> dict[str, Any]:
     raw = _cfg("panteon")
-    base = {"prefix": "", "roster_in_context": True}
+    base = {"prefix": "", "roster_in_context": True, "auto": True,
+            "first_run_suggestion": True, "create_wait_seconds": 8}
     if isinstance(raw, dict):
         base.update({k: raw[k] for k in base if k in raw})
     base["prefix"] = re.sub(r"[^a-z0-9_-]", "", str(base["prefix"] or "").lower())[:20]
@@ -1628,12 +1700,7 @@ def _on_panteon_command(raw_args: str = "", session_id: str = "", command: str =
             team = []
         cfg = _panteon_cfg()
         lang = "es" if str(command or kw.get("name") or "").lower().startswith("panteon") else _lang()
-        core_ok = True
-        try:
-            import importlib.util as _iu
-            core_ok = _iu.find_spec("hermes_cli.profiles") is not None
-        except Exception:
-            core_ok = False
+        core_ok = _panteon_auto.desktop_ready()
         return _panteon.handle(raw_args or "", lang=lang, prefix=cfg["prefix"], current_team=team,
                                set_team=_set_team_assignees, core_ok=core_ok)
     except Exception as exc:

@@ -610,7 +610,37 @@ function setup(ctx) {
 
   let stopPoll = () => {}
   if (ctx && typeof ctx.rest === 'function') {
+    // Panteón: the Python half never imports a private core module, so it asks THIS half to run the
+    // stock `profiles.create` RPC, but only after the user said yes in the chat. Each request is
+    // answered once; a profile that already exists counts as done.
+    const running = new Set()
+    const runRequests = async (list) => {
+      if (!Array.isArray(list) || !host || typeof host.request !== 'function') return
+      for (const r of list) {
+        if (!r || !r.id || !r.name || running.has(r.id)) continue
+        running.add(r.id)
+        let ok = true
+        let error = ''
+        try {
+          await host.request('profiles.create', {
+            name: String(r.name), description: String(r.description || ''),
+            clone_from: String(r.clone_from || 'default'), soul: String(r.soul || ''), no_alias: true
+          })
+        } catch (e) {
+          error = String((e && e.message) || e || '').slice(0, 200)
+          ok = /exist/i.test(error)
+        }
+        if (ok && r.ui_meta && typeof r.ui_meta === 'object') {
+          // make it a real Bot Mode bot (same ui_meta the Bots panel writes), best effort
+          try { await host.request('profiles.configure', { name: String(r.name), ui_meta: { 'hermes-bots': r.ui_meta } }) } catch (_) { /* profile still exists */ }
+        }
+        try { await ctx.rest('/panteon/result', { method: 'POST', body: { id: r.id, ok, error: ok ? '' : error } }) } catch (_) { /* retried next tick */ }
+        if (!ok) running.delete(r.id)
+      }
+    }
     const tick = () => {
+      Promise.resolve(ctx.rest('/panteon/hello', { method: 'POST', body: {}, timeoutMs: 2000 }))
+        .then((h) => { if (!disposed && h) runRequests(h.panteon_requests) }).catch(() => {})
       Promise.resolve(ctx.rest('/status', { timeoutMs: 2000 })).then((raw) => {
         if (disposed) return
         $panel.set(normalizeSnapshot(raw))

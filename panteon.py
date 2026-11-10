@@ -12,11 +12,13 @@ prompts). Nothing here knows about any person's projects, paths, keys or private
   writes profiles, and ``/panteon team <ids> confirm`` the only one that writes config.
 
 The module is pure (no hook state); ``create_profiles`` takes injectable callables so tests do
-not need a Hermes core. The default creator uses the core's own ``hermes_cli.profiles`` API
-(lazy import; if it is missing the command prints the equivalent CLI lines instead).
+not need a Hermes core. The default creator queues the profile for the Desktop half, which calls the stock
+``profiles.create`` RPC (no private core import); without it the command prints the equivalent
+CLI lines instead.
 """
 from __future__ import annotations
 
+import inspect
 import re
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
@@ -180,39 +182,50 @@ def config_snippet(names: Iterable[str]) -> str:
             f"        team:\n          assignees: [{items}]")
 
 
-# ── default core-backed callables (lazy, never raise on import) ──────────────────────────────
+# ── default callables (public surfaces only) ────────────────────────────────────────────────
+#
+# Profiles are read from the profiles folder (``hermes_constants.get_default_hermes_root``, a
+# documented helper) and created through the Desktop half, which calls the stock ``profiles.create``
+# gateway RPC. The plugin imports no private core module (catalog rule 9).
 
-def _core_profiles() -> Any:
-    from hermes_cli import profiles  # type: ignore
-    return profiles
+def _profiles_dir() -> Path:
+    from hermes_constants import get_default_hermes_root  # public plugin API
+    return Path(get_default_hermes_root()) / "profiles"
 
 
 def core_exists(name: str) -> bool:
     try:
-        return bool(_core_profiles().profile_exists(name))
+        return (_profiles_dir() / name).is_dir()
     except Exception:
         return False
 
 
 def core_list_names() -> Optional[list[str]]:
     try:
-        return list(_core_profiles().list_profile_names())
+        d = _profiles_dir()
+        return sorted(p.name for p in d.iterdir() if p.is_dir()) if d.is_dir() else []
     except Exception:
         return None
 
 
-def core_create(name: str, *, soul: str, description: str) -> dict[str, Any]:
-    """Create one profile cloned from the MAIN profile's config (provider, model, skills — the
-    channel tokens are stripped by the core), then write the role SOUL.md. Only called after the
-    user typed ``confirm``."""
-    prof = _core_profiles()
-    path = prof.create_profile(name, clone_from="default", clone_config=True, no_alias=True,
-                               description=description)
-    try:
-        (Path(path) / "SOUL.md").write_text(soul, encoding="utf-8")
-    except Exception as exc:  # the profile exists; report, do not undo
-        return {"ok": True, "path": str(path), "soul": False, "note": str(exc)}
-    return {"ok": True, "path": str(path), "soul": True}
+def core_create(name: str, *, soul: str, description: str, preset: str = "", lang: str = "en",
+                clone_from: str = "default", wait_seconds: float = 12.0) -> dict[str, Any]:
+    """Queue ONE profile for the Desktop half and wait a bounded time for its answer. Only called
+    after the user said yes (auto offer) or typed ``confirm`` (slash command). Raises when the
+    Desktop half is not there or does not answer: the command then prints the terminal lines."""
+    import panteon_auto as auto
+    if not auto.desktop_ready():
+        raise RuntimeError("the Desktop half is not active (enable it in Capabilities → Plugins)")
+    req = auto.enqueue_request(preset or name, name, lang=lang, clone_from=clone_from)
+    result = auto.wait_for_result(req["id"], wait_seconds)
+    if result == "created":
+        auto.take_finished()
+        return {"ok": True}
+    if result == "failed":
+        err = next((r.get("error") for r in auto.load_state().get("requests", []) if r.get("id") == req["id"]), "")
+        auto.take_finished()
+        raise RuntimeError(err or "profiles.create failed")
+    raise RuntimeError("no answer from the Desktop half in time (it may still finish; check the Bots panel)")
 
 
 def create_profiles(ids: Iterable[str], *, lang: str = "en", prefix: str = "",
@@ -230,7 +243,15 @@ def create_profiles(ids: Iterable[str], *, lang: str = "en", prefix: str = "",
             if exists(name):
                 out.append({"id": pid, "name": name, "status": "exists"})
                 continue
-            res = creator(name, soul=soul_for(pid, lang), description=description_for(pid, lang))
+            kwargs = {"soul": soul_for(pid, lang), "description": description_for(pid, lang),
+                      "preset": pid, "lang": lang}
+            try:
+                params = inspect.signature(creator).parameters
+                if not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                    kwargs = {k: v for k, v in kwargs.items() if k in params}
+            except (TypeError, ValueError):
+                kwargs = {k: kwargs[k] for k in ("soul", "description")}
+            res = creator(name, **kwargs)
             out.append({"id": pid, "name": name, "status": "created", "detail": res})
         except Exception as exc:
             out.append({"id": pid, "name": name, "status": "failed", "detail": str(exc)})
@@ -242,7 +263,7 @@ def create_profiles(ids: Iterable[str], *, lang: str = "en", prefix: str = "",
 _T = {
     "en": {
         "title": "Panteón — coordinator + specialised bots (opt-in)",
-        "coord": "Coordinator: the profile you are talking to now (no new profile needed).",
+        "coord": "Coordinator: the profile you chat with in Bot Chat (no new profile needed).",
         "none": "none yet",
         "cols": "preset · domain · profile · team",
         "yes": "in team", "no": "not in team", "ex": "profile exists", "nx": "no profile yet",
@@ -268,7 +289,7 @@ _T = {
         "team_nocfg": ("This Hermes cannot write plugin settings from a command. Paste this "
                        "into config.yaml:"),
         "team_missing": "These profiles do not exist yet: {m}. Run /panteon create first.",
-        "core_missing": "This Hermes does not expose its profile API to plugins; run the lines below in a terminal:",
+        "core_missing": "The Desktop half of this plugin is not active (enable it in Capabilities → Plugins), so profiles cannot be created from here. Run the lines below in a terminal:",
     },
     "es": {
         "title": "Panteón — coordinador + bots especializados (opcional)",
@@ -298,7 +319,7 @@ _T = {
         "team_nocfg": ("Este Hermes no deja escribir ajustes del plugin desde un comando. Pega "
                        "esto en config.yaml:"),
         "team_missing": "Estos perfiles aún no existen: {m}. Corre /panteon create primero.",
-        "core_missing": "Este Hermes no expone su API de perfiles a plugins; corre estas líneas en una terminal:",
+        "core_missing": "La mitad de escritorio de este plugin no está activa (actívala en Capabilities → Plugins), así que no se pueden crear perfiles desde aquí. Corre estas líneas en una terminal:",
     },
 }
 

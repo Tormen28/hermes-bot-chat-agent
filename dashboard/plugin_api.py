@@ -17,14 +17,42 @@ if str(_ROOT) not in sys.path:
 
 
 def get_status() -> dict:
+    data: dict = {"enabled": False}
     try:
         import status_panel
-        data = status_panel.read_snapshot(status_panel.status_path())
-        if not isinstance(data, dict) or not data:
-            return {"enabled": False}
-        return data
+        snap = status_panel.read_snapshot(status_panel.status_path())
+        if isinstance(snap, dict) and snap:
+            data = snap
     except Exception:
-        return {"enabled": False}
+        pass
+    try:
+        import panteon_auto
+        data = dict(data)
+        data["panteon_requests"] = panteon_auto.pending_requests()
+    except Exception:
+        pass
+    return data
+
+
+def hello() -> dict:
+    """The Desktop half is alive (it can run ``profiles.create``): lets the plugin offer specialists."""
+    try:
+        import panteon_auto
+        panteon_auto.mark_desktop_seen()
+        return {"ok": True, "panteon_requests": panteon_auto.pending_requests()}
+    except Exception:
+        return {"ok": False}
+
+
+def record_result(body: dict) -> dict:
+    try:
+        import panteon_auto
+        body = body if isinstance(body, dict) else {}
+        ok = panteon_auto.record_result(str(body.get("id") or ""), bool(body.get("ok")),
+                                        error=str(body.get("error") or ""))
+        return {"ok": ok}
+    except Exception:
+        return {"ok": False}
 
 
 try:
@@ -35,5 +63,13 @@ try:
     @router.get("/status")
     async def status() -> dict:
         return get_status()
+
+    @router.post("/panteon/hello")
+    async def panteon_hello() -> dict:
+        return hello()
+
+    @router.post("/panteon/result")
+    async def panteon_result(body: dict) -> dict:
+        return record_result(body)
 except Exception:  # pragma: no cover - FastAPI is provided by the gateway
     router = None
