@@ -60,12 +60,21 @@ A kanban worker session is outside that scope, so the assigned profile can deliv
 Requires Hermes `>= 0.22.5` (verified: that version already has every hook this plugin uses — `post_llm_call`, `agent_loop_stopped`, `kanban_task_blocked` — checked against the core tags; no raise was needed).
 
 ```bash
-hermes plugins install /path/to/this/checkout
+hermes plugins install Tormen28/hermes-bot-chat-agent     # GitHub shorthand: always the latest version
 hermes plugins enable bot-chat-agent
 ```
 
-`hermes plugins install bot-chat-agent` installs the catalog pin; `hermes plugins install Tormen28/hermes-bot-chat-agent` follows the default branch.
+- `hermes plugins install bot-chat-agent` installs the **catalog pin**. Until the catalog entry is re-pinned it may still be an older release (check `hermes plugins info bot-chat-agent`: the `Version:` line); use the GitHub form above to get 0.3.0 now.
+- Installing from a local checkout: Hermes v0.23 does **not** accept a bare path (`hermes plugins install ./checkout` is read as `owner/repo`). Use a file URL of a git checkout: `hermes plugins install file:///absolute/path/to/checkout`.
+- Reinstall over an existing copy: add `--force`.
+
 Desktop / Webapp: **Capabilities → Plugins → Bot Chat Agent** → switch **On** (this enables the Desktop half: card + panteón). Restart the app if it does not appear.
+Then open **Bots**, pick a bot and chat.
+
+First things to try (works in any language, the model replies in yours):
+
+- Say `Decision: we use PostgreSQL 16 for project Aurora`, or `Remember that I prefer short answers`; open a new session later and ask about it. `/memoria` (Spanish) or `/botmemory` (plugin language) lists what was kept. In the Desktop slash menu, pick the command, then press Enter again to send it.
+- Ask for something specialised (code, design, research): Hermes offers one line to create the matching bot; answer `yes` / `sí`.
 Then open **Bots**, pick a bot and chat.
 
 ## Disable / uninstall
@@ -148,7 +157,7 @@ Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also
 
 **Bounded context (Fase 2).** The turn context is split into stable instructions (≤300 tokens), project state, tasks and notices (≤1,500 tokens, 2,000 per piece), measured with the tokenizer. After the first full turn the team note is incremental — only what changed is injected; a turn with no changes injects one short line. Critical constraints are never dropped; anything else that does not fit is listed as dropped. The project card (`<HERMES_HOME>/bot-chat-agent/project-card.md`, wow 7) is the source of truth: manual edits always win, are versioned in the store, and derived content never writes the file. After a cancellation, a compaction or a reopen, the context is rebuilt from the durable store. The plugin also registers a `ContextEngine` named `bot-chat` — **inactive by default**; activate it with `context.engine: bot-chat` in the core config (single slot; without it the `pre_llm_call` hook keeps injecting). It uses only public plugin surfaces: it delegates to the core's own compressor when that is reachable, and otherwise falls back to a small deterministic local compactor (keeps the first/last messages, never splits a tool call from its result, replaces the middle with one digest note; no LLM call). That fallback is weaker than a model-written summary. **Whether any of this makes a very long session faster has NOT been measured** (tests prove the mechanism and bounded sizes, not live latency).
 
-**Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:` / `Decisión:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) — no model and no network. Secret-like text is not stored. Fail-open: a missing or corrupt store never breaks the turn. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
+**Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:` / `Decisión:`, `We decided…`, `Lesson learned:`, `Decidimos`, `Lección:`, plus — only from your own words — `Remember that…`, `From now on…`, `Recuerda que…`, and `Décision :` / `Decisão:` / `Entscheidung:`) — no model and no network. Secret-like text is not stored. Fail-open: a missing store never breaks the turn, and an unreadable one is moved aside (`memory.db.corrupt-<time>`) and recreated. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
 
 **`/memoria` and `/botmemory`.** In a Bot Chat session type `/memoria` (Spanish labels) or `/botmemory` (English by default) to see the long-term store, the rolling summary and any pending asks. Each long-term row has an 8-character id: `/botmemory forget ab12cd34` drops one entry, `/botmemory edit ab12cd34 New text` corrects it, `/botmemory clear` asks for confirmation and `/botmemory clear confirm` erases every long-term row. Nothing is changed if the id is unknown or the store cannot be opened.
 
@@ -347,8 +356,12 @@ Requiere Hermes `>= 0.22.5`.
 hermes plugins install Tormen28/hermes-bot-chat-agent
 hermes plugins enable bot-chat-agent
 ```
-Desktop: **Capacidades → Plugins → Bot Chat Agent** → activar. Reinicia la app si no aparece.
+`hermes plugins install bot-chat-agent` instala la versión **fijada en el catálogo**, que puede ser una anterior hasta que se re-fije (mira la línea `Version:` en `hermes plugins info bot-chat-agent`). Desde una carpeta local, Hermes v0.23 no acepta una ruta suelta: usa `hermes plugins install file:///ruta/absoluta/al/checkout`. Para reinstalar encima: `--force`.
+
+Desktop: **Capacidades → Plugins → Bot Chat Agent** → activar (es la mitad Desktop: tarjeta y panteón). Reinicia la app si no aparece.
 Luego abre **Bots**, elige un bot y chatea.
+
+Para probar: escribe `Decisión: usamos PostgreSQL 16 para Aurora` o `Recuerda que prefiero respuestas cortas`, abre una sesión nueva más tarde y pregunta por eso; `/memoria` te muestra lo guardado (en el menú de comandos, elige el comando y pulsa Enter otra vez para enviarlo). Pide algo especializado (código, diseño, investigación) y Hermes te ofrecerá en una línea crear el bot adecuado: responde `sí`.
 
 ### Desactivar / desinstalar
 

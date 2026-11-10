@@ -47,13 +47,14 @@ Sin `team.assignees` el bot trabaja solo. Con nombres de perfiles, espera a que 
 Requiere Hermes `>= 0.22.5` (verificado: esa versión ya tiene los hooks que usa el plugin — `post_llm_call`, `agent_loop_stopped`, `kanban_task_blocked`).
 
 ```bash
-hermes plugins install /ruta/a/esta/copia
+hermes plugins install Tormen28/hermes-bot-chat-agent
 hermes plugins enable bot-chat-agent
 ```
 
-`hermes plugins install bot-chat-agent` instala la versión del catálogo; `hermes plugins install Tormen28/hermes-bot-chat-agent` sigue la rama por defecto.
+`hermes plugins install bot-chat-agent` instala la versión **fijada en el catálogo**, que puede ser una anterior hasta que se re-fije (mira la línea `Version:` en `hermes plugins info bot-chat-agent`). Desde una carpeta local, Hermes v0.23 no acepta una ruta suelta (la lee como `owner/repo`): usa `hermes plugins install file:///ruta/absoluta/al/checkout`. Para reinstalar encima: `--force`.
+
 Desktop / Webapp: **Capacidades → Plugins → Bot Chat Agent** → ponlo en **On** (así se activa la mitad Desktop: tarjeta + panteón). Reinicia la app si no aparece.
-Luego abre **Bots**, elige un bot y chatea.
+Luego abre **Bots**, elige un bot y chatea. Para probar: `Decisión: usamos PostgreSQL 16 para Aurora` o `Recuerda que prefiero respuestas cortas`, abre una sesión nueva más tarde y pregunta por eso; `/memoria` lista lo guardado (en el menú de comandos elige el comando y pulsa Enter otra vez). Pide algo especializado y Hermes ofrecerá crear el bot adecuado: responde `sí`.
 
 ## Desactivar / desinstalar
 

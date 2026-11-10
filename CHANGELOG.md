@@ -17,6 +17,14 @@ Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not 
 
 - Guard hardening (R13 evasions, A0.7 injection gaps), agentic short-answer style contract, pending-asks reminder after a mid-turn steer, durable delivery with graceful degradation when the core lacks the durable API (B1 detected by capability, also on the #151935 surface), Windows fixes, strict stability tooling (`tools/stability/runner.py`, `r26_audit.py`), cron bridge, optional context engine (**inactive by default**), generic local memory + `/memoria` (alias `/botmemory`), live status card with multi-bot view, status writer fixes, tests against a release-tarball core.
 
+**Found by the full simulated new-user test (fixed, with tests)**
+
+- Install docs: `hermes plugins install /path` does not work on Hermes v0.23 (read as `owner/repo`); README now says `file://` / GitHub shorthand / `--force`, and that the catalog pin may still be 0.2.0.
+- **Context engine never compacted.** `update_model()` ran before the lazy compactor existed, so it got `context_length=0` (threshold 0). On a 300-turn run the history grew to 600 messages (~105k tokens on a 64k model). Now the window is remembered. (Engine is still off by default.)
+- Memory: `Remember that…` / `Recuerda que…` / `From now on…` (user words only) and fr/pt/de decision cues are stored; an unreadable `memory.db` is moved aside and recreated instead of silently disabling memory forever.
+- Status card: a finished delegation stops its clock (it read "done 20m 1s" and kept growing) and leaves the card after 15 min (failures after 1 h).
+- Tests: the suite wrote `status.json` into whatever `HERMES_HOME` was set (a live profile); it now uses a temp home. The core-bound Fase 3b gate is skipped with a reason when no core python is configured instead of failing 17 tests.
+
 **Honest limits.** Long-session speed is *not* measured (the context engine is off by default; tests prove mechanism and bounds, not latency). The offer depends on the model following an injected instruction. Screenshots 05–12 use a simulated model.
 
 ## 0.3.0-dev (panteón + real-core checks) - 2026-11-10
