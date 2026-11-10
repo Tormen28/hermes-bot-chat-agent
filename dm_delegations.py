@@ -35,7 +35,7 @@ CARD_ERROR_SECONDS = 60 * 60
 
 _NOTICE_HEAD = re.compile(r"\[IMPORTANT:\s*(?:\d+\s+)?background process", re.I)
 _FINISHED = re.compile(r"(task finished|finished|completed|exited with code 0|tarea (?:terminada|finalizada)|termin[oó])", re.I)
-_FAILED = re.compile(r"(task failed|failed|fall[oó]|exit[_ ]code\s*[=:]?\s*[1-9]|exited with code [1-9]|timed out|error)", re.I)
+_FAILED = re.compile(r"(task failed|failed|fall[oó]|exit[_ ]code\s*[=:]?\s*-?[1-9]|exited with code [1-9]|timed out|error)", re.I)
 _EXIT0 = re.compile(r"exit[_ ]code\s*[=:]?\s*0\b", re.I)
 
 

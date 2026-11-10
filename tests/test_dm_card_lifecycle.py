@@ -33,6 +33,12 @@ class TestLifecycle(unittest.TestCase):
         changed = dm.apply_completion(notice(1, out="Traceback ..."), now=1030.0, path=self.path)
         self.assertEqual([c["state"] for c in changed], ["error"])
 
+    def test_killed_process_negative_exit_code_is_an_error(self):
+        # seen live: kill -9 on the teammate's delivery process -> "exited (exit code -9)"
+        self._call()
+        changed = dm.apply_completion(notice(-9), now=1030.0, path=self.path)
+        self.assertEqual([c["state"] for c in changed], ["error"])
+
     def test_exit_zero_with_scary_words_in_output_is_still_done(self):
         self._call()
         changed = dm.apply_completion(notice(0, out="0 errors, nothing failed"), now=1030.0, path=self.path)
