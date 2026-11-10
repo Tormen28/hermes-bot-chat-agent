@@ -44,15 +44,16 @@ class TestSpawnContention(unittest.TestCase):
         self.assertEqual(store.integrity_check(), "ok")
         self.assertEqual(store.stats()["total"], PROCS * own + shared)
 
-    def test_consumers_claim_each_row_exactly_once_under_contention(self):
+    def _run_consumers(self, attempt):
+        db = self.tmp / f"deliveries-{attempt}.db"
         total = 600
-        store = delivery_store.DeliveryStore(self.db)
+        store = delivery_store.DeliveryStore(db)
         for i in range(total):
             store.record(kind="completed", task_id=f"t-{i}", session_id="s-1", summary="x")
         barrier = self.ctx.Barrier(PROCS)
         queue = self.ctx.Queue()
         procs = [self.ctx.Process(target=_mp_workers.consume,
-                                  args=(str(ROOT), str(self.db), barrier, "s-1", 10, queue))
+                                  args=(str(ROOT), str(db), barrier, "s-1", 10, queue))
                  for _ in range(PROCS)]
         for p in procs:
             p.start()
@@ -61,11 +62,22 @@ class TestSpawnContention(unittest.TestCase):
             p.join(timeout=60)
             self.assertEqual(p.exitcode, 0)
         ids = [i for b in batches for i in b]
+        # exactly-once is strict on EVERY attempt
         self.assertEqual(len(ids), total, "every row claimed")
         self.assertEqual(len(set(ids)), total, "no row claimed twice")
-        busy = sum(1 for b in batches if b)
-        self.assertGreaterEqual(busy, 2, "the work must be shared between consumers (real contention)")
-        self.assertEqual(delivery_store.DeliveryStore(self.db).integrity_check(), "ok")
+        self.assertEqual(delivery_store.DeliveryStore(db).integrity_check(), "ok")
+        return sum(1 for b in batches if b)
+
+    def test_consumers_claim_each_row_exactly_once_under_contention(self):
+        # Whether the work is SHARED depends on the OS scheduler: on a loaded machine one process can
+        # drain the backlog before the others are scheduled (seen when a webapp and a build were running).
+        # That says nothing about the store, so only the sharing check gets up to 3 attempts.
+        busy = [self._run_consumers(a) for a in range(1)]
+        for attempt in (1, 2):
+            if busy[-1] >= 2:
+                break
+            busy.append(self._run_consumers(attempt))
+        self.assertGreaterEqual(max(busy), 2, f"the work must be shared between consumers (busy per attempt: {busy})")
 
 
 if __name__ == "__main__":
