@@ -921,7 +921,7 @@ function setup(ctx) {
 
 export default {
   id: 'bot-chat-agent',
-  name: 'Bot Chat Agent',
+  name: 'Hermes Bots',
   description: 'Bot Chat only: Working, Queued, Waiting for your OK, Waiting on a teammate, Ready (results waiting), Blocked card, Done, or Error. Reasoning collapsed by default.',
   defaultEnabled: true,
   register(ctx) { setup(ctx) }

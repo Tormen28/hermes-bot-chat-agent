@@ -2,6 +2,8 @@
 
 ## 0.3.0 - 2026-11-10
 
+**Public name: Hermes Bots.** The display name (`label` in plugin.yaml, Desktop plugin name, README headings, catalog title) is now "Hermes Bots", with a new cover `docs/hermes-bots-030-nous.jpg`. The plugin id and folder remain `bot-chat-agent`, so existing installs, config keys and `hermes plugins update` keep working.
+
 Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not pushed, not published.
 
 **New in this cut**

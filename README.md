@@ -1,4 +1,8 @@
-# Bot Chat Agent for Hermes
+# Hermes Bots for Hermes
+
+![Hermes Bots 0.3.0 — memory, status card and an opt-in pantheon of specialist bots](docs/hermes-bots-030-nous.jpg)
+
+> Display name **Hermes Bots** · plugin id and folder stay `bot-chat-agent` (so updates and installs keep working).
 
 **English** · [Español](#español)
 
@@ -6,7 +10,7 @@
 
 **0.3.0** adds, on top of 0.2.0 (style, guard, status bar): a hardened guard, pending-ask reminders, local short-term and long-term memory (`/memoria`), durable background delivery, a live status card with multi-bot delegations, an *automatic but opt-in* panteón of specialist bots inside the stock **Bots** panel, a cron bridge, and an optional (off by default) context engine.
 
-**Two halves, one package.** The Python half works as soon as you enable the plugin. The Desktop half (status card, panteón offers and profile creation) is **opt-in in the app**: open **Capabilities → Plugins → Bot Chat Agent** and switch it **On** (the Desktop remembers the choice). Without it you still get style, guard and memory; you just do not get the card or the one-line offers, and `/pantheon create` prints terminal commands instead of creating profiles.
+**Two halves, one package.** The Python half works as soon as you enable the plugin. The Desktop half (status card, panteón offers and profile creation) is **opt-in in the app**: open **Capabilities → Plugins → Hermes Bots** and switch it **On** (the Desktop remembers the choice). Without it you still get style, guard and memory; you just do not get the card or the one-line offers, and `/pantheon create` prints terminal commands instead of creating profiles.
 
 ## Why this exists
 
@@ -14,7 +18,7 @@ Hermes is powerful, and that power shows on screen: reasoning blocks, tool cards
 For developers that is great. For many people (students, small business owners, family members, anyone
 who is not technical) it can feel overwhelming.
 
-**Bot Chat Agent** gives them a friendlier Hermes Bot Chat: you ask, you see a quiet *"Working…"* bar,
+**Hermes Bots** gives them a friendlier Hermes Bot Chat: you ask, you see a quiet *"Working…"* bar,
 and you get a short, direct answer. Less on screen, fewer questions, the same Hermes underneath.
 If you want every detail, open a normal session: it stays exactly as it was.
 
@@ -80,7 +84,7 @@ hermes plugins enable bot-chat-agent
 - Installing from a local checkout: Hermes v0.23 does **not** accept a bare path (`hermes plugins install ./checkout` is read as `owner/repo`). Use a file URL of a git checkout: `hermes plugins install file:///absolute/path/to/checkout`.
 - Reinstall over an existing copy: add `--force`.
 
-Desktop / Webapp: **Capabilities → Plugins → Bot Chat Agent** → switch **On** (this enables the Desktop half: card + panteón). Restart the app if it does not appear.
+Desktop / Webapp: **Capabilities → Plugins → Hermes Bots** → switch **On** (this enables the Desktop half: card + panteón). Restart the app if it does not appear.
 Then open **Bots**, pick a bot and chat.
 
 First things to try (works in any language, the model replies in yours):
@@ -345,7 +349,7 @@ MIT. See [LICENSE](LICENSE).
 
 **0.3.0** suma, sobre la 0.2.0 (estilo, guardia, barra de estado): guardia reforzada, recordatorio de pedidos pendientes, memoria local corta y larga (`/memoria`), entrega durable en segundo plano, tarjeta de estado con delegaciones entre bots, un **panteón casi automático pero opcional** de bots especialistas dentro del panel **Bots** de siempre, un puente a cron y un motor de contexto opcional (apagado por defecto).
 
-**Dos mitades, un paquete.** La mitad Python funciona al activar el plugin. La mitad **Desktop** (tarjeta de estado, ofertas del panteón y creación de perfiles) es **opcional dentro de la app**: abre **Capacidades → Plugins → Bot Chat Agent** y ponla en **On**. Sin eso sigues teniendo estilo, guardia y memoria, pero no la tarjeta ni las ofertas, y `/pantheon create` solo te imprime los comandos de terminal.
+**Dos mitades, un paquete.** La mitad Python funciona al activar el plugin. La mitad **Desktop** (tarjeta de estado, ofertas del panteón y creación de perfiles) es **opcional dentro de la app**: abre **Capacidades → Plugins → Hermes Bots** y ponla en **On**. Sin eso sigues teniendo estilo, guardia y memoria, pero no la tarjeta ni las ofertas, y `/pantheon create` solo te imprime los comandos de terminal.
 
 ### Por qué existe
 
@@ -353,7 +357,7 @@ Hermes es muy potente, y esa potencia se ve en pantalla: bloques de razonamiento
 diffs, logs, preguntas de seguimiento. Para un desarrollador eso está genial. Para mucha gente (estudiantes,
 emprendedores, familia, cualquiera que no sea técnico) puede ser abrumador.
 
-**Bot Chat Agent** les da un Bot Chat de Hermes más amable: preguntas, ves una barra discreta de
+**Hermes Bots** les da un Bot Chat de Hermes más amable: preguntas, ves una barra discreta de
 *"Cargando…"* y recibes una respuesta corta y directa. Menos cosas en pantalla, menos preguntas, el mismo
 Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: queda exactamente igual.
 
@@ -386,7 +390,7 @@ hermes plugins enable bot-chat-agent
 ```
 `hermes plugins install bot-chat-agent` instala la versión **fijada en el catálogo**, que puede ser una anterior hasta que se re-fije (mira la línea `Version:` en `hermes plugins info bot-chat-agent`). Desde una carpeta local, Hermes v0.23 no acepta una ruta suelta: usa `hermes plugins install file:///ruta/absoluta/al/checkout`. Para reinstalar encima: `--force`.
 
-Desktop: **Capacidades → Plugins → Bot Chat Agent** → activar (es la mitad Desktop: tarjeta y panteón). Reinicia la app si no aparece.
+Desktop: **Capacidades → Plugins → Hermes Bots** → activar (es la mitad Desktop: tarjeta y panteón). Reinicia la app si no aparece.
 Luego abre **Bots**, elige un bot y chatea.
 
 Para probar: escribe `Decisión: usamos PostgreSQL 16 para Aurora` o `Recuerda que prefiero respuestas cortas`, abre una sesión nueva más tarde y pregunta por eso; `/memoria` te muestra lo guardado (en el menú de comandos, elige el comando y pulsa Enter otra vez para enviarlo). Pide algo especializado (código, diseño, investigación) y Hermes te ofrecerá en una línea crear el bot adecuado: responde `sí`.
