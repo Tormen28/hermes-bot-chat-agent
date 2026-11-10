@@ -108,10 +108,21 @@ plugins:
           per_piece_tokens: 2000 # cap per context piece (plugin policy)
           engine_name: bot-chat  # ContextEngine name; activate with context.engine: bot-chat
           incremental_note: true # after the first turn, only what changed
+        memory:                # generic memory; local store only, no vault
+          enabled: true
+          short_term: true     # rolling summary of earlier turns + pending asks
+          long_term: true      # decisions / project state / lessons
+          recent_messages: 8
+          summary_budget_tokens: 400
+          long_term_budget_tokens: 400
+          max_entries: 500     # prune oldest when the store grows past this
 ```
 Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also treated as an outbound send.
 
 **Bounded context (Fase 2).** The turn context is split into stable instructions (≤300 tokens), project state, tasks and notices (≤1,500 tokens, 2,000 per piece), measured with the tokenizer. After the first full turn the team note is incremental — only what changed is injected; a turn with no changes injects one short line. Critical constraints are never dropped; anything else that does not fit is listed as dropped. The project card (`<HERMES_HOME>/bot-chat-agent/project-card.md`, wow 7) is the source of truth: manual edits always win, are versioned in the store, and derived content never writes the file. After a cancellation, a compaction or a reopen, the context is rebuilt from the durable store. The plugin also registers a delegating `ContextEngine` named `bot-chat` (no core change: compaction is still delegated to the core's `ContextCompressor`; only `select_context` is overridden) — activate it with `context.engine: bot-chat` in the core config (single slot; without it the `pre_llm_call` hook keeps injecting).
+
+**Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) — no model and no network. Secret-like text is not stored. Fail-open: a missing or corrupt store never breaks the turn. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
+
 
 ### Guard presets
 

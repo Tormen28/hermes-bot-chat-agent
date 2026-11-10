@@ -37,6 +37,7 @@ import context_engine as _context_engine  # noqa: E402
 import guard_rules  # noqa: E402
 import untrusted  # noqa: E402
 import pending_asks as _pending_asks  # noqa: E402
+import bot_chat_memory as _bot_chat_memory  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,15 @@ DEFAULTS: dict[str, Any] = {
     "context": {"dynamic_budget_tokens": 1500, "stable_budget_tokens": 300,
                 "per_piece_tokens": 2000, "engine_name": "bot-chat",
                 "incremental_note": True},
+    # Generic memory (no external vault): short-term rolling summary of
+    # earlier turns + pending asks, and long-term decisions / project
+    # state / lessons in <HERMES_HOME>/bot-chat-agent/memory.db. Retrieved
+    # only when relevant, under a token budget, via pre_llm_call; written
+    # back in post_llm_call. Safe no-op when disabled or when the store
+    # cannot be opened (core v0.23 degrade).
+    "memory": {"enabled": True, "short_term": True, "long_term": True,
+               "recent_messages": 8, "summary_budget_tokens": 400,
+               "long_term_budget_tokens": 400, "max_entries": 500},
     # Fase 3 background work (route A): visible queue per session (plan
     # §6: max 10 open background tasks). The dispatcher of the core
     # runs them; the plugin only coordinates, tracks and delivers.
@@ -749,6 +759,38 @@ def _context_store() -> Optional[delivery_store.DeliveryStore]:
         return None
 
 
+
+def _memory_cfg() -> dict[str, Any]:
+    return _bot_chat_memory.normalize_cfg(_cfg("memory"))
+
+
+def _memory_store():
+    """Plugin-local memory store; None when memory is off or cannot open."""
+    try:
+        cfg = _memory_cfg()
+        if not cfg["enabled"]:
+            return None
+        return _bot_chat_memory.MemoryStore(
+            _hermes_home() / "bot-chat-agent" / "memory.db")
+    except Exception:
+        return None
+
+
+def _memory_block(session_id: str, messages: Any = None) -> str:
+    """Bounded memory section for this turn (empty on any failure)."""
+    try:
+        cfg = _memory_cfg()
+        if not cfg["enabled"]:
+            return ""
+        return _bot_chat_memory.render_for_turn(
+            _memory_store(), session_id or "", messages or [],
+            query=_bot_chat_memory._last_user(messages or []),
+            lang=_lang(), cfg=cfg)
+    except Exception as exc:
+        logger.debug("%s: memory render skipped: %s", PLUGIN_ID, exc)
+        return ""
+
+
 def _load_project_card() -> Optional[project_card.ProjectCard]:
     """Project card (wow 7); ``None`` when the user has no card file.
 
@@ -844,10 +886,17 @@ def _build_turn_context(session_id: str, turn_id: str = "",
                 _pending_asks.pending_for_turn(session_id or "", messages), lang)
         except Exception as exc:  # never break the turn for a reminder
             logger.debug("%s: pending asks skipped: %s", PLUGIN_ID, exc)
+    memory = ""
+    if messages:
+        memory = _memory_block(session_id or "", messages)
+    elif _memory_cfg()["enabled"] and _memory_cfg()["long_term"]:
+        # No history this turn: still try long-term retrieval against "".
+        memory = _memory_block(session_id or "", [])
     return {
         "stable": stable,
         "pending": pending,
         "dynamic": dynamic["text"],
+        "memory": memory,
         "tokens": dynamic["tokens"],
         "dropped": dynamic["dropped"],
         "over_budget": dynamic["over_budget"],
@@ -924,18 +973,24 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
                        PLUGIN_ID, ", ".join(built["dropped"]) or "none")
     note = _untrusted_note(session_id or "")
     text = "\n\n".join(part for part in (built["stable"], built["dynamic"],
-                                           built.get("pending", ""), note) if part.strip())
+                                           built.get("pending", ""),
+                                           built.get("memory", ""), note)
+                         if part and str(part).strip())
     if not text.strip():
         return None
     return {"context": text}
 
 
-def _on_post_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> None:
+def _on_post_llm_call(session_id: str = "", turn_id: str = "",
+                      conversation_history: Any = None,
+                      final_response: str = "", **kw: Any) -> None:
     """Confirm this turn's offered deliveries (only after the turn generated).
 
     ``post_llm_call`` does not fire on interrupted turns (core:
     ``if final_response and not interrupted:``), so an interrupted turn
     simply never confirms: the lease / next turn re-offers the notice.
+    Memory write-back is best-effort and fail-open: v0.23 may only pass
+    ``session_id`` / ``turn_id``; any available response or history is used.
     """
     try:
         if not session_id or not is_bot_chat(session_id):
@@ -962,6 +1017,20 @@ def _on_post_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> None
         _relay_pending(session_id)
     except Exception as exc:
         logger.warning("%s: delivery confirm failed: %s", PLUGIN_ID, exc)
+    try:
+        cfg = _memory_cfg()
+        if cfg["enabled"] and cfg["long_term"]:
+            resp = (final_response
+                    or kw.get("response")
+                    or kw.get("assistant_message")
+                    or "")
+            _bot_chat_memory.remember_turn(
+                _memory_store(), session_id or "",
+                messages=conversation_history,
+                final_response=str(resp or ""),
+                cfg=cfg)
+    except Exception as exc:
+        logger.debug("%s: memory write-back skipped: %s", PLUGIN_ID, exc)
     return None
 
 
@@ -1373,8 +1442,8 @@ def register(ctx: Any) -> None:
     try:
         if hasattr(ctx, "register_context_engine"):
             engine = _context_engine.BotChatContextEngine(
-                build_context=lambda sid: _build_turn_context(
-                    sid, turn_id=f"engine:{sid}"),
+                build_context=lambda sid, turn_id=None, messages=None, **_k: _build_turn_context(
+                    sid, turn_id=turn_id or f"engine:{sid}", messages=messages),
                 protected_block=_protected_block,
                 clear_fingerprint=_clear_engine_fingerprint,
             )

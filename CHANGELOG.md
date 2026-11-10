@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0-dev (memory) - 2026-11-10
+
+Generic memory for every user, stored only inside Hermes (plugin-local SQLite). No segundo-cerebro, no vault, no API keys.
+
+- **Short-term.** A rolling extractive summary of earlier user/assistant turns (tool payloads skipped) plus the existing pending-asks reminder. Recent messages stay in the core history; the summary is budgeted (`memory.summary_budget_tokens`, default 400).
+- **Long-term.** Decisions, project state and lessons live in `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` retrieves only entries that overlap the current request, under `memory.long_term_budget_tokens` (default 400). `post_llm_call` writes back from clear cues in the turn (`Decision:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) with no model and no network. Secret-like text is refused. Oldest rows are pruned past `memory.max_entries`.
+- **Config.** `memory.enabled` / `short_term` / `long_term` plus the budgets above (all on by default). Fail-open on a missing, corrupt or unreadable store, and on a v0.23 `post_llm_call` that only passes `session_id` / `turn_id`.
+- **Honest limit.** On core v0.23 the hook can only inject a bounded block; it cannot replace the core's growing `conversation_history`. The delegating engine's `select_context` includes the same block when `context.engine: bot-chat` is set. Passing tests and the synthetic bench do not prove live long-session slowness is fixed.
+- Benchmark (synthetic long sessions, `tests/_memory_bench.py`) and before/after numbers: `docs/memory-bench.md`. Tests: `tests/test_memory.py`.
+
 ## 0.3.0-dev (pending asks) - 2026-11-09
 
 - **Interrupted asks are no longer dropped.** Live test finding: a second user message delivered mid-turn (core steer, `[OUT-OF-BAND USER MESSAGE]`) made the model switch topic and never answer the first ask. New `pending_asks.py`: `pre_llm_call` scans the recent tail of `conversation_history` for earlier real user asks followed by another user message with no final assistant reply, and adds a `[Pending asks]` / `[Pendientes]` block (max 3 asks, 160 chars each, each ask reminded at most twice per session). Pure, fail-open, no I/O. Hook path only (the delegating engine passes no history). `tests/test_pending_asks.py`.

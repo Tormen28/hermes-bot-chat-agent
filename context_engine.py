@@ -306,10 +306,18 @@ class BotChatContextEngine(_Base):  # type: ignore[misc]
                     break
             if any(marker in last_user for marker in _style_markers()):
                 return None
-            built = self._build_context(self._session_id) or {}
+            msgs = conversation_messages or request_messages
+            try:
+                built = self._build_context(
+                    self._session_id, f"engine:{self._session_id}", msgs) or {}
+            except TypeError:
+                built = self._build_context(self._session_id) or {}
             stable = str(built.get("stable") or "")
             dynamic = str(built.get("dynamic") or "")
-            text = "\n\n".join(part for part in (stable, dynamic) if part.strip())
+            pending = str(built.get("pending") or "")
+            memory = str(built.get("memory") or "")
+            text = "\n\n".join(part for part in (stable, dynamic, pending, memory)
+                                 if part.strip())
             if not text.strip():
                 return None
             out = [dict(m) if isinstance(m, dict) else m for m in (request_messages or [])]

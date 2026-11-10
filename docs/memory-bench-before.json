@@ -1,0 +1,125 @@
+{
+  "estimator": "chars/4",
+  "python": "3.13.5",
+  "lengths": [
+    10,
+    25,
+    50,
+    100,
+    200
+  ],
+  "rows": [
+    {
+      "turns": 10,
+      "messages": 23,
+      "injected_chars": 1185,
+      "injected_tokens": 297,
+      "history_chars": 16666,
+      "history_tokens": 4167,
+      "pre_llm_ms": 4.437699999471079,
+      "bounded_view_chars": null,
+      "bounded_view_tokens": null,
+      "pre_llm_ms_p50": 4.279,
+      "pre_llm_ms_p95": 4.345,
+      "pre_llm_ms_samples": [
+        4.35,
+        4.222,
+        4.328,
+        4.279,
+        4.26
+      ],
+      "total_prompt_tokens": 4464
+    },
+    {
+      "turns": 25,
+      "messages": 62,
+      "injected_chars": 1185,
+      "injected_tokens": 297,
+      "history_chars": 42844,
+      "history_tokens": 10711,
+      "pre_llm_ms": 4.406775000461494,
+      "bounded_view_chars": null,
+      "bounded_view_tokens": null,
+      "pre_llm_ms_p50": 4.057,
+      "pre_llm_ms_p95": 4.721,
+      "pre_llm_ms_samples": [
+        3.977,
+        3.962,
+        4.057,
+        4.772,
+        4.516
+      ],
+      "total_prompt_tokens": 11008
+    },
+    {
+      "turns": 50,
+      "messages": 121,
+      "injected_chars": 1185,
+      "injected_tokens": 297,
+      "history_chars": 84716,
+      "history_tokens": 21179,
+      "pre_llm_ms": 4.840059000343899,
+      "bounded_view_chars": null,
+      "bounded_view_tokens": null,
+      "pre_llm_ms_p50": 6.135,
+      "pre_llm_ms_p95": 6.428,
+      "pre_llm_ms_samples": [
+        5.064,
+        6.486,
+        5.51,
+        6.196,
+        6.135
+      ],
+      "total_prompt_tokens": 21476
+    },
+    {
+      "turns": 100,
+      "messages": 242,
+      "injected_chars": 1185,
+      "injected_tokens": 297,
+      "history_chars": 169514,
+      "history_tokens": 42379,
+      "pre_llm_ms": 4.670779000662151,
+      "bounded_view_chars": null,
+      "bounded_view_tokens": null,
+      "pre_llm_ms_p50": 4.379,
+      "pre_llm_ms_p95": 4.444,
+      "pre_llm_ms_samples": [
+        4.447,
+        4.191,
+        4.175,
+        4.436,
+        4.379
+      ],
+      "total_prompt_tokens": 42676
+    },
+    {
+      "turns": 200,
+      "messages": 487,
+      "injected_chars": 1185,
+      "injected_tokens": 297,
+      "history_chars": 339693,
+      "history_tokens": 84924,
+      "pre_llm_ms": 3.996688999905018,
+      "bounded_view_chars": null,
+      "bounded_view_tokens": null,
+      "pre_llm_ms_p50": 3.992,
+      "pre_llm_ms_p95": 4.103,
+      "pre_llm_ms_samples": [
+        4.131,
+        3.992,
+        3.994,
+        3.903,
+        3.928
+      ],
+      "total_prompt_tokens": 85221
+    }
+  ],
+  "injected_tokens_last_vs_first": 1.0,
+  "history_tokens_last_vs_first": 20.38,
+  "plugin_can_replace_core_history": false,
+  "notes": "Injected context is what pre_llm_call returns. History is the synthetic conversation the core would still send on v0.23 (hook cannot replace it). bounded_view is only present after the memory module lands.",
+  "label": "before",
+  "commit": "3394829",
+  "branch": "feat/bot-chat-generic-memory"
+}

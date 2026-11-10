@@ -62,6 +62,9 @@ La configuración (`language: es` para respuestas en español), las reglas de la
 están detalladas arriba en inglés. En resumen: lee `state.db` **solo en modo lectura** para encontrar los Bot Chat,
 nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no envía telemetría.
 
+**Memoria.** Va encendida por defecto y es solo local: un resumen extractivo de turnos anteriores y un almacén de decisiones, estado del proyecto y lecciones en `<HERMES_HOME>/bot-chat-agent/memory.db`. No usa un segundo cerebro ni ningún vault externo. En Hermes v0.23 el hook solo puede *añadir* ese bloque acotado; no puede sustituir el historial completo que el core sigue enviando. Se apaga con `memory.enabled: false`. Detalles y cifras en [README.md](README.md) y `docs/memory-bench.md`.
+
+
 **Limitación conocida:** el SDK público de Desktop puede colapsar el razonamiento pero aún no puede ocultar las
 tarjetas de herramientas por sesión, así que esas tarjetas siguen visibles en Bot Chat.
 
