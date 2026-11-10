@@ -23,9 +23,14 @@ Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not 
 - **Context engine never compacted.** `update_model()` ran before the lazy compactor existed, so it got `context_length=0` (threshold 0). On a 300-turn run the history grew to 600 messages (~105k tokens on a 64k model). Now the window is remembered. (Engine is still off by default.)
 - Memory: `Remember that…` / `Recuerda que…` / `From now on…` (user words only) and fr/pt/de decision cues are stored; an unreadable `memory.db` is moved aside and recreated instead of silently disabling memory forever.
 - Status card: a finished delegation stops its clock (it read "done 20m 1s" and kept growing) and leaves the card after 15 min (failures after 1 h).
+- Status card is live: elapsed/"stalled" are recomputed on every read (it was frozen between turns); a killed delegate (`exit code -9`) now ends as an error; the card shows at most 4 delegations (open first, then most recent).
+- Desktop: `profiles.create` is retried (a brand-new home can answer ENOENT once); polling backs off to once a minute when the Python half is gone (it was a 404 every 3 s after `plugins remove`).
+- Uninstall: README says what stays (your data folder, the Desktop half installed by the core).
 - Tests: the suite wrote `status.json` into whatever `HERMES_HOME` was set (a live profile); it now uses a temp home. The core-bound Fase 3b gate is skipped with a reason when no core python is configured instead of failing 17 tests.
 
-**Honest limits.** Long-session speed is *not* measured (the context engine is off by default; tests prove mechanism and bounds, not latency). The offer depends on the model following an injected instruction. Screenshots 05–12 use a simulated model.
+**Long session, measured with a mock model (300 turns, laptop-class CPU, so only the *difference* means anything):** baseline p50 39 ms / p95 61 ms; plugin p50 63 ms / p95 125 ms (about +24 ms per turn, flat across the run, no growth); plugin + `context.engine: bot-chat` p50 61 ms, requests ~30% smaller than baseline, history bounded. Real-model latency is dominated by the model and is *not* measured.
+
+**Honest limits.** Tests prove mechanism and bounds, not that a real model feels fast in a long Bot Chat (the context engine is off by default). The offer depends on the model following an injected instruction. Screenshots 05–12 use a simulated model.
 
 ## 0.3.0-dev (panteón + real-core checks) - 2026-11-10
 
