@@ -20,6 +20,9 @@ import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from _bca_testenv import requires_fork, requires_sigkill  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -166,6 +169,8 @@ class TestFase5Gate(unittest.TestCase):
         self.assertTrue(lock.get("present"),
                         f"la escritura no sobrevivió a la espera del lock: {lock}")
 
+    @requires_sigkill
+
     def test_recovery_after_kill9(self):
         res = bench.recovery_after_kill9()
         self.assertEqual(res["integrity"], "ok", f"integridad: {res}")
@@ -184,6 +189,8 @@ class TestFase5Gate(unittest.TestCase):
 
 class TestFase5MultiprocessHandoff(unittest.TestCase):
     """Validación real con 2 procesos: productor + consumidor (Fase 1b)."""
+
+    @requires_fork
 
     def test_two_processes_zero_loss(self):
         import multiprocessing as mp

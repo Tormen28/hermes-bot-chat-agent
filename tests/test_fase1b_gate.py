@@ -32,6 +32,9 @@ import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from _bca_testenv import requires_fork, requires_sigkill  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -449,6 +452,8 @@ class TestFase1bCrashAndGate(unittest.TestCase):
         bca._cache.clear()
         bca._questions.clear()
 
+    @requires_sigkill
+
     def test_kill9_producer_mid_record(self):
         """kill -9 en mitad de las escrituras: el store queda íntegro y
         contiene exactamente lo confirmado (journal == store)."""
@@ -495,6 +500,8 @@ class TestFase1bCrashAndGate(unittest.TestCase):
         if extra:
             self.assertEqual(extra[0], expected[len(journaled)],
                              "la fila extra debe ser la siguiente en secuencia")
+
+    @requires_sigkill
 
     def test_kill9_consumer_mid_loop_then_recover(self):
         """kill -9 al consumidor en mitad del bucle: al re-conectar, los
@@ -580,6 +587,8 @@ class TestFase1bCrashAndGate(unittest.TestCase):
         self.assertEqual(state["n"], 1, "el primer intento debe haber fallado")
         self.assertIsNotNone(store.get("t-lock"),
                              "la entrega debe quedar registrada tras el reintento")
+
+    @requires_fork
 
     def test_10000_events_five_producers(self):
         """PUERTA 1b: 5 productores x 2.000 eventos; 0 faltantes, 0 dups."""

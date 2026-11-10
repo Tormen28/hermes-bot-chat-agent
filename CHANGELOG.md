@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0-dev (hardening) - 2026-11-09
+
+Audit follow-up on the installed 0.3.0-dev (fase5 snapshot `e3b4f60`). No change to the Nous catalog, `main` or PR #3.
+
+- **Guard evasions closed (R13).** New `guard_rules.py`: each command is checked as written, normalised (`/bin/rm`, `\rm`, `env rm`, quote splicing, `sudo`/`nohup` wrappers) and through every recoverable nested payload (`bash|sh|zsh -c`, `cmd /c`, `powershell|pwsh -Command`, `eval`, `$(…)`, backticks, `python -c` literals, inline base64, `-EncodedCommand`). New rules `obfuscated_exec` (decoder piped into a shell/interpreter) and `memory_injection`; `external_sends` now also covers local files leaving through `curl -d @f`, `-F f=@f`, `--post-file`, `| nc`, `scp f user@host:` (loopback allowed). `.env` after `@` is now a secret (`curl -d @.env`). `rd /s` counts as a delete. All regexes are linear and inputs/variants are capped (pathological-input tests included). Corpus: 45 evasions blocked, 73 benign look-alikes allowed (`tests/guard_corpus.py`).
+- **A0.7 injection gaps closed (5/5).** `transform_tool_result` wraps tool output with instruction-like text as labelled untrusted data (text preserved); `post_tool_call` flags it and, on cores without that hook, the next turn carries a one-line notice; worker summaries are neutralised in every render path (team note, recently-delivered section, B1 transcript line); writes of standing instructions into `MEMORY.md`/`USER.md`/`SOUL.md`/`AGENTS.md`/memory tools are blocked; `untrusted.py` holds the detectors.
+- **Graceful degradation without the durable-delivery API.** Core 0.23.0 has no `ctx.record_delegation_delivery` / `record_completion_note` / `read_session` (verified on the live install). `delivery_path()` reports the live path, a startup log line says which one is active, `has_b1()` no longer raises on a ctx whose attributes explode, and `tests/test_core_compat.py` proves no notification is lost (offer → confirm, cancelled turn re-offers) for `offer`/`auto`/`b1` modes on a v0.23.0-shaped ctx.
+- **Windows.** `background_tasks.resource_key` is now platform-neutral (forward slashes, case-folded on Windows), which also fixes the two `KeyError: 'parents'` failures (the serialization key did not match on `\`). Tests that need `fork` or `SIGKILL` skip with an explicit reason on Windows (`tests/_bca_testenv.py`); `tests/test_concurrency_spawn.py` runs real `spawn` contention (4 producers, 4 consumers claiming 600 rows with limit 10) on every platform.
+- **Strict stability tooling (`tools/stability/`).** `runner.py` (pass = exit code 0 AND JSON `ok is True`; battery compared by test name against `known_failures.json`; `hermes send` return code checked and recorded; no alerts during the run, one final notification), `live_probe.py` (real core `PluginManager`, throw-away home, full guard corpus through the real hook, p95 limit), `r26_audit.py` (static AST + runtime `sys.addaudithook`: zero network, zero subprocess, zero secret opens, `state.db`/`kanban.db` only `mode=ro`; negative tests prove it detects tampering).
+- Manifest declares `transform_tool_result`. Docs: README guard table, `docs/AUDITORIA-LIVE-CORE.md`.
+
 ## 0.3.0-dev - 2026-11-06
 
 Private/test cut for a personal Hermes. This is not the Nous catalog release. `main` stays 0.2.0 until this branch is reviewed and merged.

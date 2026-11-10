@@ -1,5 +1,9 @@
 """Fase 0 (A0.7) — matriz de permisos y fixtures de inyección.
 
+ESTADO (hardening 0.3.0): los 5 huecos de ``TestInjectionGaps`` están CERRADOS y esos
+tests ahora PASAN (ver ``untrusted.py``, ``guard_rules.py``, ``transform_tool_result``).
+El texto de abajo describe el estado histórico de Fase 0.
+
 La guarda del plugin es SOLO ``pre_tool_call``: ``check_tool_call`` (reglas
 sobre nombre de herramienta y argumentos) + ``team_flow.evaluate``
 (``kanban_lock`` / ``wait_for_god``). No inspecciona el CONTENIDO que
@@ -166,7 +170,7 @@ class TestGuardBlocks(unittest.TestCase):
 
 
 class TestInjectionGaps(unittest.TestCase):
-    """Huecos: la guarda NO frena estos casos (deben FALLAR ahora)."""
+    """Huecos de Fase 0, ahora cerrados: estos casos deben quedar frenados/marcados."""
 
     def setUp(self):
         set_ctx({"team": {"enabled": True, "gods": ["BSK"]}})

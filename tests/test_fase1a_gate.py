@@ -25,6 +25,9 @@ import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from _bca_testenv import requires_fork, requires_sigkill  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -177,6 +180,8 @@ class TestFase1aGate(unittest.TestCase):
         self.assertIn("lease result", ctx2)
         self._post(turn="turn-2")
         self.assertEqual(store.get("t-lease")[0]["status"], "delivered_in_turn")
+
+    @requires_fork
 
     def test_three_producers_1000_events(self):
         """3 productores x 1.000 eventos: 0 faltantes y 0 duplicados visibles."""

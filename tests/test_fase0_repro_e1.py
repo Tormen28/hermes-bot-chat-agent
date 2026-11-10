@@ -30,6 +30,9 @@ import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from _bca_testenv import requires_fork, requires_sigkill  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -80,6 +83,7 @@ def _consumer(notify_path, taken_path, stop_event):
 
 
 class TestReproE1(unittest.TestCase):
+    @requires_fork
     def test_cross_process_delivery_loss(self):
         """E1: 200 entregas desde 2 procesos + 1 consumidor; 0 avisos perdidos."""
         ctx = mp.get_context("fork")

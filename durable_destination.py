@@ -37,6 +37,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+try:  # A0.7: worker text is data; neutralise instruction-like spans before it reaches the model
+    from untrusted import neutralize as _neutralize
+except Exception:  # pragma: no cover - sibling module missing: keep a conservative fallback
+    def _neutralize(value, max_chars=600):
+        text = " ".join(str(value or "").split())
+        return text[:max_chars]
+
 STATE_DETACHED_RESULT_CAPABILITY = "state.detached_result"
 _B1_METHODS = ("record_delegation_delivery", "record_completion_note")
 _MODES = ("offer", "auto", "b1")
@@ -46,7 +53,10 @@ def has_b1(ctx: Any) -> bool:
     """True when ``ctx`` exposes the B1 detached-result surface."""
     if ctx is None:
         return False
-    return all(callable(getattr(ctx, name, None)) for name in _B1_METHODS)
+    try:
+        return all(callable(getattr(ctx, name, None)) for name in _B1_METHODS)
+    except Exception:  # a ctx whose attribute access raises is "no B1", never a crash
+        return False
 
 
 def normalize_mode(raw: Any) -> str:
@@ -64,7 +74,7 @@ def content_for(row: dict[str, Any]) -> str:
     """Transcript text for a delivery row (data, never an instruction)."""
     kind = str(row.get("kind") or "completed")
     verb = "Blocked" if kind == "blocked" else "Delivered"
-    summary = str(row.get("summary") or "").strip()
+    summary = _neutralize(row.get("summary"))
     line = f"[Bot Chat] {verb}: {row.get('task_id')} by {row.get('assignee') or 'teammate'}"
     if summary:
         line += f" — «{summary}»"

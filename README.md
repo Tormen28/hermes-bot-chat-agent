@@ -129,16 +129,22 @@ You can set `preset: relaxed` (or `guard: relaxed`) and still override individua
 | Rule | Blocks (examples) |
 |---|---|
 | secrets | reading `.env`, `auth.json`, SSH keys, `*.pem`; `printenv` |
-| deletes | `rm`, `Remove-Item`, `del`, `DROP TABLE`, `DELETE FROM`, `shutil.rmtree` |
+| deletes | `rm`, `Remove-Item`, `del`, `rd /s`, `DROP TABLE`, `DELETE FROM`, `shutil.rmtree` — also through `/bin/rm`, `\rm`, `env rm`, `bash -c "…"`, `powershell -Command`, `eval`, `$(…)`, inline base64 and `-EncodedCommand` |
 | destructive_git | `push --force`, `reset --hard`, `clean -f`, `branch -D`, `rebase` |
 | protected_push | `git push … main`, merges into protected branches, `gh pr merge` |
-| external_sends | `send_message`, `react_to_message`, outbound MCP tools |
+| external_sends | `send_message`, `react_to_message`, outbound MCP tools; a local file leaving through the network (`curl -d @file`, `-F f=@file`, `--post-file`, `… \| nc host`, `scp file user@host:`). Loopback targets are allowed |
 | expensive_models | `delegate_task` with a model matching the patterns |
 | one_question_per_turn | a second `clarify` in the same turn |
 | kanban_lock | writing `kanban.db`, mutating `hermes kanban` from the shell, impersonating the user, or creating a card that is already finished. Missing `idempotency_key` on `kanban_create` is filled in, not blocked |
+| obfuscated_exec | decoded or decompressed data piped into a shell/interpreter (`… \| base64 -d \| bash`, `bash <(base64 -d …)`, `eval "$(… \| base64 -d)"`) |
+| memory_injection | instruction-like text ("always approve…", override phrases) written into `MEMORY.md`, `USER.md`, `SOUL.md`, `AGENTS.md`, memory tools or `>> MEMORY.md` |
 | wait_for_god | `kanban_complete` (and review/archive) of a card assigned to `team.assignees`, or of an ancestor that still has such a card open, until that card's status is `done` |
 
 The guard is a safety net based on patterns, not a sandbox. Keep Hermes's own approval settings on.
+
+**What 0.3.0 hardening covers (and what it does not).** Every command is analysed in several forms: as written, normalised (absolute binary paths, alias backslashes, quote splicing, `sudo`/`env`/`nohup` wrappers) and every nested payload it can recover (`sh -c`, `eval`, `$(…)`, inline base64, PowerShell `-EncodedCommand`). The same rules run on each form. Still NOT covered: payloads built at run time (hex-escaped strings, variables concatenated across lines, scripts written to disk then run), and piping a remote download into a shell. Treat it as a seatbelt.
+
+**Untrusted content (A0.7).** Tool output that contains instruction-like text (instruction-override phrases, "approve everything", role markers…) is wrapped as labelled untrusted data by the `transform_tool_result` hook (core 0.23+; on older cores a one-line notice is added to the next turn instead). Worker summaries that Bot Chat itself puts in the context are neutralised (instruction-like spans removed, length capped). Turn it off with `untrusted.wrap_tool_results: false`. This lowers the risk; it cannot make injection impossible.
 
 ## One bot or a team
 
@@ -197,6 +203,16 @@ needs a new Desktop SDK hook (proposed upstream). Until then tool cards still sh
 python -m pytest tests -q
 hermes plugins validate . --install-deps
 ```
+
+Strict stability run (exit code AND `ok is True`, battery compared by test name, `hermes send` checked, one final notification):
+
+```bash
+python tools/stability/runner.py --plugin <installed plugin dir> --python <python with pytest> \
+    --live-python <hermes venv python> --minutes 60 --notify-final
+python tools/stability/r26_audit.py <plugin dir>     # disclosure audit: static + runtime (audit hook)
+```
+
+POSIX-only tests (`fork`, `SIGKILL`) are skipped on Windows with a reason; `tests/test_concurrency_spawn.py` covers the same store guarantees there with real `spawn` contention.
 
 ## License
 MIT. See [LICENSE](LICENSE).

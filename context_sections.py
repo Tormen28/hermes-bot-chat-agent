@@ -29,6 +29,13 @@ import project_card as _card_mod
 import scheduled_tasks
 import team_flow
 
+try:  # A0.7: worker text is data; neutralise instruction-like spans before it reaches the model
+    from untrusted import neutralize as _neutralize
+except Exception:  # pragma: no cover - sibling module missing: keep a conservative fallback
+    def _neutralize(value, max_chars=600):
+        text = " ".join(str(value or "").split())
+        return text[:max_chars]
+
 
 def _lang_lines(lang: str) -> dict[str, str]:
     es = lang == "es"
@@ -311,7 +318,7 @@ def render_dynamic(*, lang: str, gods: list[str], wait_for_god: bool,
                 for row in rows:
                     dlines.append(
                         f"{row.get('task_id')} {'por' if es else 'by'} "
-                        f"{row.get('assignee')} — «{row.get('summary')}».")
+                        f"{row.get('assignee')} — «{_neutralize(row.get('summary'))}».")
                 delivered_text = "\n".join(dlines)
         new_fp = {
             "cards": _card_state(cards),

@@ -94,8 +94,14 @@ def resource_key(args: Any) -> str:
     data = args if isinstance(args, dict) else {}
     path = str(data.get("workspace_path") or "").strip()
     if path:
-        # Same directory on disk, whatever the spelling.
-        return "path:" + os.path.normpath(path)
+        # Same directory on disk, whatever the spelling. Canonical form is
+        # platform-neutral: forward slashes, and case-folded where the file
+        # system is case-insensitive (Windows), so ``C:\\Proj\\X`` and
+        # ``c:/proj/x`` serialize as ONE resource. POSIX keys are unchanged.
+        key = os.path.normcase(os.path.normpath(path))
+        if os.sep == "\\":
+            key = key.replace("\\", "/")
+        return "path:" + key
     project = str(data.get("project") or data.get("project_id") or "").strip()
     if project:
         return "project:" + project

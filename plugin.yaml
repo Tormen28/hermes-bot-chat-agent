@@ -26,6 +26,7 @@ provides_hooks:
   - pre_llm_call
   - pre_tool_call
   - post_tool_call
+  - transform_tool_result
   - post_llm_call
   - agent_loop_stopped
   - kanban_task_completed
@@ -36,6 +37,7 @@ hooks:
   - pre_llm_call
   - pre_tool_call
   - post_tool_call
+  - transform_tool_result
   - post_llm_call
   - agent_loop_stopped
   - kanban_task_completed
