@@ -74,7 +74,9 @@ class TestMemoryStore(unittest.TestCase):
         path.write_text("this is not sqlite", encoding="utf-8")
         store = self.mem.MemoryStore(path)
         self.assertEqual(store.retrieve("anything at all here", budget_tokens=100), [])
-        self.assertIsNone(store.upsert("lesson", "should not explode", session_id="s"))
+        # Never raises; and since the store is quarantined and recreated, memory works again
+        # (tests/test_memory_corrupt.py) instead of staying silently dead.
+        store.upsert("lesson", "should not explode", session_id="s")
 
 
 class TestShortTerm(unittest.TestCase):

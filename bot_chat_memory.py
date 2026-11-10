@@ -270,14 +270,38 @@ class MemoryStore:
     def __init__(self, path: Any):
         self.path = Path(path)
 
+    _CORRUPT_MARKERS = ("not a database", "malformed", "disk image", "file is encrypted")
+
+    def _quarantine(self) -> None:
+        """Move an unreadable store aside (never delete the user's file) so memory starts fresh
+        instead of being silently dead forever."""
+        stamp = time.strftime("%Y%m%dT%H%M%S")
+        for suffix in ("", "-wal", "-shm"):
+            src = Path(str(self.path) + suffix)
+            if src.exists():
+                try:
+                    src.replace(Path(f"{self.path}.corrupt-{stamp}{suffix}"))
+                except OSError:
+                    pass
+
     def _conn(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout = 5000")
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.executescript(_SCHEMA)
-        return conn
+        for attempt in (0, 1):
+            conn = sqlite3.connect(self.path, timeout=5.0)
+            try:
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA busy_timeout = 5000")
+                conn.execute("PRAGMA journal_mode = WAL")
+                conn.executescript(_SCHEMA)
+                return conn
+            except sqlite3.DatabaseError as exc:
+                conn.close()
+                corrupt = any(m in str(exc).lower() for m in self._CORRUPT_MARKERS)
+                if attempt == 0 and corrupt:
+                    self._quarantine()
+                    continue
+                raise
+        raise sqlite3.DatabaseError("memory store unavailable")  # pragma: no cover
 
     def _open(self):
         """Connection that always closes (``with conn`` does not close on 3.12+)."""
