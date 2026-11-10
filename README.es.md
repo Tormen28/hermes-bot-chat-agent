@@ -64,6 +64,11 @@ hermes plugins remove bot-chat-agent
 ```
 O apágalo en **Capacidades → Plugins**. Al desactivarlo se restaura tu ajuste anterior de "colapsar razonamiento".
 
+`plugins remove` quita solo la parte de Python. Quedan dos cosas: tus datos en `<HERMES_HOME>/bot-chat-agent/`
+(memorias y registro de entregas; borra la carpeta para olvidar todo) y la parte de Desktop en
+`<HERMES_HOME>/desktop-plugins/bot-chat-agent/` (quítala en **Capacidades → Plugins** o borra esa carpeta).
+Si queda la parte de Desktop no molesta: no muestra tarjeta y consulta la API ausente una vez por minuto.
+
 ## Configuración y privacidad
 
 La configuración (`language: es` para respuestas en español), las reglas de la guardia y las divulgaciones

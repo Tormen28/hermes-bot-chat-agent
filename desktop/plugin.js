@@ -655,14 +655,21 @@ function setup(ctx) {
         if (!ok) running.delete(r.id)
       }
     }
+    // If the Python half is gone (plugin removed or disabled while this Desktop half is still
+    // installed) every poll is a 404. Back off to one probe a minute instead of one every 3 s.
+    let misses = 0
+    let skipped = 0
     const tick = () => {
+      if (misses >= 3 && ++skipped < 20) return
+      skipped = 0
       Promise.resolve(ctx.rest('/panteon/hello', { method: 'POST', body: {}, timeoutMs: 2000 }))
         .then((h) => { if (!disposed && h) runRequests(h.panteon_requests) }).catch(() => {})
       Promise.resolve(ctx.rest('/status', { timeoutMs: 2000 })).then((raw) => {
         if (disposed) return
+        misses = 0
         $panel.set(normalizeSnapshot(raw))
         render()
-      }).catch(() => { /* fail-open: keep the last snapshot */ })
+      }).catch(() => { misses += 1 /* fail-open: keep the last snapshot */ })
     }
     tick()
     if (typeof ctx.setInterval === 'function') {

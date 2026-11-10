@@ -85,6 +85,11 @@ hermes plugins remove bot-chat-agent
 ```
 Or switch it off in **Capabilities → Plugins**. Disabling restores your previous "collapse reasoning" setting.
 
+`plugins remove` takes out the Python half only. Two things stay, on purpose or because the core owns them:
+your data in `<HERMES_HOME>/bot-chat-agent/` (memories, delivery log; delete the folder to forget everything)
+and the Desktop half in `<HERMES_HOME>/desktop-plugins/bot-chat-agent/` (remove it in **Capabilities → Plugins**
+or delete that folder). A leftover Desktop half is harmless: it shows no card and probes the missing API once a minute.
+
 ## Configuration
 In `config.yaml` (all optional; defaults shown):
 ```yaml
