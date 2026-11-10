@@ -22,6 +22,9 @@ Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not 
 - Every plugin-written user-facing string follows the language of the user's latest message (es / en / fr / pt / de, offline detection, sticky per session, English fallback; `language: auto` is the new default, an explicit code forces one): status card, `/memoria`, `/botmemory` (the command name no longer decides the language), `/pantheon`. Model-written lines (offer, "ready") get an explicit "answer in <language>" instruction. A yes/no and specialty keywords are recognised in fr / pt / de too.
 - Core loop guard refusals (`max_hops` reached, exchange over, duplicate message) now read **stopped** on the card with the reason and what to do, and the tool result carries a note so the coordinator explains it in the user's language instead of retrying.
 
+- Found in the real webapp while checking this (fixed): the Desktop bar stayed in the language of the first page load; a note containing the guard's `[bot-chat-agent]` marker made the bar read "waiting for your OK · {json}" (the note now uses its own marker); and a removed identifier made `StatusBar` throw and the whole card vanish (a static test now guards it). English, French, German and Portuguese users were run end to end with a simulated model; real-model compliance with the "answer in <language>" instruction is not measured.
+- Tests: the spawn-contention "work is shared" check depends on the OS scheduler and failed twice on a loaded box; it now gets 3 attempts (exactly-once stays strict on each).
+
 **Found by the full simulated new-user test (fixed, with tests)**
 
 - Install docs: `hermes plugins install /path` does not work on Hermes v0.23 (read as `owner/repo`); README now says `file://` / GitHub shorthand / `--force`, and that the catalog pin may still be 0.2.0.
