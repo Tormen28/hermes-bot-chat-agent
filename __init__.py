@@ -38,6 +38,8 @@ import guard_rules  # noqa: E402
 import untrusted  # noqa: E402
 import pending_asks as _pending_asks  # noqa: E402
 import bot_chat_memory as _bot_chat_memory  # noqa: E402
+import memory_command as _memory_command  # noqa: E402
+import status_panel as _status_panel  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +129,11 @@ DEFAULTS: dict[str, Any] = {
     "memory": {"enabled": True, "short_term": True, "long_term": True,
                "recent_messages": 8, "summary_budget_tokens": 400,
                "long_term_budget_tokens": 400, "max_entries": 500},
+    # Compact live status line (header in pre_llm_call, and a suffix on
+    # the Desktop bar when the host forwards a bot-chat-status event).
+    # Off with status_panel.enabled: false. Idle turns with nothing to
+    # report add no text (keeps the style budget intact).
+    "status_panel": {"enabled": True},
     # Fase 3 background work (route A): visible queue per session (plan
     # §6: max 10 open background tasks). The dispatcher of the core
     # runs them; the plugin only coordinates, tracks and delivers.
@@ -791,6 +798,39 @@ def _memory_block(session_id: str, messages: Any = None) -> str:
         return ""
 
 
+
+def _status_cfg() -> dict[str, Any]:
+    raw = _cfg("status_panel")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {"enabled": bool(raw.get("enabled", True))}
+
+
+def _status_header(session_id: str, injected: str) -> str:
+    """Compact header; empty when disabled or there is nothing to show."""
+    try:
+        if not _status_cfg()["enabled"]:
+            return ""
+        store = _memory_store()
+        recalled = store.load_recall(session_id or "") if store is not None else []
+        pending = store.load_pending(session_id or "") if store is not None else []
+        tasks: list[dict[str, Any]] = []
+        try:
+            cs = _context_store()
+            if cs is not None:
+                tasks = cs.background_tasks(session_id or "", _background_tasks.OPEN_STATUSES)
+        except Exception:
+            tasks = []
+        return _status_panel.render(
+            lang=_lang(), enabled=True, tasks=tasks, pending=pending,
+            recalled=recalled,
+            context_tokens=context_budget.estimate_tokens(injected or ""),
+        )
+    except Exception as exc:
+        logger.debug("%s: status panel skipped: %s", PLUGIN_ID, exc)
+        return ""
+
+
 def _load_project_card() -> Optional[project_card.ProjectCard]:
     """Project card (wow 7); ``None`` when the user has no card file.
 
@@ -880,12 +920,19 @@ def _build_turn_context(session_id: str, turn_id: str = "",
         budget_tokens=cfg["dynamic_budget_tokens"],
     )
     pending = ""
+    pending_items: list[str] = []
     if messages:
         try:
-            pending = _pending_asks.render(
-                _pending_asks.pending_for_turn(session_id or "", messages), lang)
+            pending_items = _pending_asks.pending_for_turn(session_id or "", messages)
+            pending = _pending_asks.render(pending_items, lang)
         except Exception as exc:  # never break the turn for a reminder
             logger.debug("%s: pending asks skipped: %s", PLUGIN_ID, exc)
+    try:
+        mstore = _memory_store()
+        if mstore is not None:
+            mstore.save_pending(session_id or "", pending_items)
+    except Exception as exc:
+        logger.debug("%s: pending stash skipped: %s", PLUGIN_ID, exc)
     memory = ""
     if messages:
         memory = _memory_block(session_id or "", messages)
@@ -976,6 +1023,9 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
                                            built.get("pending", ""),
                                            built.get("memory", ""), note)
                          if part and str(part).strip())
+    panel = _status_header(session_id or "", text)
+    if panel:
+        text = panel + "\n\n" + text
     if not text.strip():
         return None
     return {"context": text}
@@ -1384,6 +1434,49 @@ def _register_transform(ctx: Any) -> None:
         logger.info("%s: transform_tool_result unavailable (%s); using the next-turn notice", PLUGIN_ID, exc)
 
 
+
+def _on_memory_command(raw_args: str = "", session_id: str = "",
+                       command: str = "", **kw: Any) -> str:
+    """Slash-command handler (v0.23: ``fn(raw_args) -> str``; extra kwargs ignored)."""
+    try:
+        lang = "es" if str(command or kw.get("name") or "").lower().startswith("memoria") else _lang()
+        return _memory_command.handle(
+            raw_args or "", store=_memory_store(),
+            session_id=str(session_id or kw.get("session_id") or ""),
+            lang=lang, command=str(command or ""),
+        )
+    except Exception as exc:
+        logger.debug("%s: /memoria failed: %s", PLUGIN_ID, exc)
+        return f"Memory command failed ({exc}). Nothing was changed."
+
+
+def _on_memoria_command(raw_args: str = "", session_id: str = "", **kw: Any) -> str:
+    return _on_memory_command(raw_args, session_id=session_id, command="memoria", **kw)
+
+
+def _on_memory_alias(raw_args: str = "", session_id: str = "", **kw: Any) -> str:
+    return _on_memory_command(raw_args, session_id=session_id, command="memory", **kw)
+
+
+def _register_memory_commands(ctx: Any) -> None:
+    """Register /memoria and /memory when the core exposes register_command."""
+    if not hasattr(ctx, "register_command"):
+        logger.info("%s: register_command unavailable; /memoria disabled", PLUGIN_ID)
+        return
+    hint = "[list|forget id|edit id text|clear [confirm]]"
+    try:
+        ctx.register_command(
+            "memoria", _on_memoria_command,
+            description="List, edit or forget Bot Chat memories",
+            args_hint=hint)
+        ctx.register_command(
+            "memory", _on_memory_alias,
+            description="List, edit or forget Bot Chat memories",
+            args_hint=hint)
+    except Exception as exc:
+        logger.info("%s: /memoria not registered (%s)", PLUGIN_ID, exc)
+
+
 def register(ctx: Any) -> None:
     global _ctx
     _ctx = ctx
@@ -1456,3 +1549,7 @@ def register(ctx: Any) -> None:
     except Exception as exc:
         logger.debug("%s: context engine registration skipped: %s",
                      PLUGIN_ID, exc)
+    try:
+        _register_memory_commands(ctx)
+    except Exception as exc:
+        logger.debug("%s: memory command registration skipped: %s", PLUGIN_ID, exc)

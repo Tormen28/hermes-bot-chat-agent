@@ -90,6 +90,7 @@ export function classifyPhase(lang, state) {
   const l = I18N[lang] ? lang : 'en'
   const t = I18N[l]
   const s = state || {}
+  const panel = String(s.panel || '').trim()
   const focused = String(s.focusedSession || '')
   const total = readyCount(s.ready)
   const mine = readyCount(s.ready, focused)
@@ -162,19 +163,21 @@ export function classifyPhase(lang, state) {
     }
   }
   if (s.busy) {
+    const text = `${t.working} · ${s.activity || t.thinking}`
     return {
       active: true,
       phase: 'working',
       blocked: false,
-      text: `${t.working} · ${s.activity || t.thinking}`
+      text: panel ? `${text} · ${panel}` : text
     }
   }
   if (s.working) {
+    const text = `${t.working} · ${s.working}`
     return {
       active: true,
       phase: 'working',
       blocked: false,
-      text: `${t.working} · ${s.working}`
+      text: panel ? `${text} · ${panel}` : text
     }
   }
   if (s.notice && !s.busy) {
@@ -186,13 +189,16 @@ export function classifyPhase(lang, state) {
       text: detail ? `${t.done} ${detail}` : t.done
     }
   }
+  if (panel && s.inBotChat) {
+    return { active: true, phase: 'panel', blocked: false, text: panel }
+  }
   return { active: false, phase: 'idle', blocked: false, text: '' }
 }
 
 export function applyTeamEvent(state, name, payload) {
   const base = Object.assign(
     { teamWait: '', notice: '', activity: '', blocked: false, detail: '', error: '',
-      queued: '', working: '', ready: {}, cardBlocked: '' },
+      queued: '', working: '', ready: {}, cardBlocked: '', panel: '' },
     state || {})
   const body = payload && typeof payload === 'object' ? payload : {}
   const bag = body.args && typeof body.args === 'object'
@@ -233,6 +239,9 @@ export function applyTeamEvent(state, name, payload) {
       cardBlocked: text, teamWait: '', notice: '',
       queued: clear(base.queued), working: clear(base.working)
     })
+  }
+  if (lname.includes('bot-chat-status') || lname.includes('bot_chat_panel')) {
+    return Object.assign({}, base, { panel: String(body.panel || body.text || '') })
   }
   if (tool === 'kanban_create' || lname === 'kanban_create') {
     const who = assignee

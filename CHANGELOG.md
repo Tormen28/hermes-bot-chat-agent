@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0-dev (memoria + status) - 2026-11-10
+
+Nous-hackathon follow-up on `feat/bot-chat-generic-memory`. Still local-only, fail-open, core v0.23 compatible. No publish, no merge to main.
+
+- **Slash command `/memoria`** (alias `/memory`), registered with `ctx.register_command` when the core exposes it (Hermes v0.23 `fn(raw_args) -> str`; extra `session_id` is used if passed). Lists long-term entries by type (with short ids), the rolling session summary and pending asks. `forget`/`olvidar <id>` removes one entry, `edit`/`editar <id> <text>` corrects it (id stays stable), `clear`/`borrar` erases all long-term rows only after `confirm`/`confirmar`. `/memoria` answers in Spanish; `/memory` follows the plugin language (English by default). Readable in chat. If `register_command` is missing, registration is skipped and the rest of the plugin still loads.
+- **Live status panel.** A compact `[Status]` / `[Estado]` header in `pre_llm_call` when there is something to show (running background tasks, pending asks, memories recalled this turn with short titles, and the compact token count). Idle turns stay silent so the style budget is unchanged. Toggle with `status_panel.enabled` (default on). The Desktop status bar also accepts an optional `panel` suffix (`classifyPhase` / a `bot-chat-status` event) without changing existing phases when the field is absent.
+- Headless demo: `demo/hackathon_demo.py`. Tests: `tests/test_memory_command.py`, `tests/test_status_panel.py`, plus two new desktop cases in `tests/test_fase3_desktop.mjs`.
+
 ## 0.3.0-dev (memory) - 2026-11-10
 
 Generic memory for every user, stored only inside Hermes (plugin-local SQLite). No segundo-cerebro, no vault, no API keys.

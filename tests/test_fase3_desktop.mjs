@@ -102,3 +102,37 @@ test('labelFor and shortError unchanged', () => {
   assert.equal(labelFor('es', 'kanban_create'), 'Asignando a un compañero')
   assert.equal(shortError('[bot-chat-agent] Blocked: x\nsecond line'), 'Blocked: x')
 })
+
+test('status panel suffix is idle-visible and does not alter existing phases without panel', () => {
+  const idle = classifyPhase('en', { ...state(), inBotChat: true, busy: false })
+  assert.equal(idle.phase, 'idle')
+  assert.equal(idle.active, false)
+  const panel = classifyPhase('en', {
+    ...state(), inBotChat: true, busy: false,
+    panel: '1 working · 2 recalled (token auth) · 720 tok'
+  })
+  assert.equal(panel.active, true)
+  assert.equal(panel.phase, 'panel')
+  assert.match(panel.text, /720 tok/)
+  assert.match(panel.text, /token auth/)
+  const working = classifyPhase('en', {
+    ...state(), inBotChat: true, busy: true, activity: 'Reading files',
+    panel: '2 recalled (token auth) · 720 tok'
+  })
+  assert.equal(working.phase, 'working')
+  assert.match(working.text, /Working/)
+  assert.match(working.text, /720 tok/)
+  const blocked = classifyPhase('en', {
+    ...state(), inBotChat: true, busy: false, blocked: true, detail: 'needs approval',
+    panel: '2 recalled'
+  })
+  assert.equal(blocked.phase, 'waiting_ok')
+  assert.doesNotMatch(blocked.text, /recalled/)
+})
+
+test('applyTeamEvent records a bot-chat-status panel line', () => {
+  const s = applyTeamEvent(state(), 'bot-chat-status', {
+    panel: '1 pending · 2 recalled (token auth) · 400 tok'
+  })
+  assert.match(s.panel, /2 recalled/)
+})

@@ -14,6 +14,7 @@ Every public function fails open (returns empty / None) on error.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 import time
@@ -93,6 +94,14 @@ CREATE TABLE IF NOT EXISTS memories (
   updated_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mem_updated ON memories(updated_at);
+
+CREATE TABLE IF NOT EXISTS session_aux (
+  session_id TEXT PRIMARY KEY,
+  pending TEXT NOT NULL DEFAULT '[]',
+  last_recalled TEXT NOT NULL DEFAULT '[]',
+  last_tokens INTEGER NOT NULL DEFAULT 0,
+  updated_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS session_summary (
   session_id TEXT PRIMARY KEY,
   text TEXT NOT NULL DEFAULT '',
@@ -369,6 +378,182 @@ class MemoryStore:
             return 0
 
 
+    def list_all(self, limit: int = 500) -> list[dict[str, Any]]:
+        try:
+            with self._open() as conn:
+                rows = conn.execute(
+                    "SELECT id, kind, text, keywords, session_id, updated_at "
+                    "FROM memories ORDER BY kind, updated_at DESC LIMIT ?",
+                    (max(1, int(limit)),),
+                ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+    def resolve(self, token: str) -> tuple[Optional[dict[str, Any]], str]:
+        """Look up by full id or unique prefix. Error is empty on success."""
+        try:
+            key = str(token or "").strip().lower()
+            if len(key) < 4:
+                return None, "id too short"
+            with self._open() as conn:
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT id, kind, text, keywords, session_id, updated_at "
+                    "FROM memories WHERE id LIKE ?",
+                    (key + "%",),
+                ).fetchall()]
+            if not rows:
+                return None, "not found"
+            exact = [r for r in rows if r["id"] == key]
+            if exact:
+                return exact[0], ""
+            if len(rows) > 1:
+                return None, "ambiguous"
+            return rows[0], ""
+        except Exception:
+            return None, "not found"
+
+    def get(self, token: str) -> Optional[dict[str, Any]]:
+        row, _err = self.resolve(token)
+        return row
+
+    def delete(self, token: str) -> Optional[dict[str, Any]]:
+        row, err = self.resolve(token)
+        if not row:
+            return None
+        try:
+            with self._open() as conn:
+                conn.execute("DELETE FROM memories WHERE id = ?", (row["id"],))
+            return row
+        except Exception:
+            return None
+
+    def update(self, token: str, text: str) -> Optional[dict[str, Any]]:
+        row, err = self.resolve(token)
+        if not row:
+            return None
+        try:
+            body = _neutralize(_sentence(text, 400), max_chars=400)
+            if len(body) < 8 or looks_like_secret(body):
+                return None
+            now = time.time()
+            words = " ".join(_tokens(body))
+            with self._open() as conn:
+                conn.execute(
+                    "UPDATE memories SET text = ?, keywords = ?, updated_at = ? "
+                    "WHERE id = ?",
+                    (body, words, now, row["id"]),
+                )
+            row = dict(row)
+            row["text"] = body
+            row["keywords"] = words
+            row["updated_at"] = now
+            return row
+        except Exception:
+            return None
+
+    def clear_all(self) -> int:
+        try:
+            with self._open() as conn:
+                n = int(conn.execute("SELECT COUNT(*) AS n FROM memories").fetchone()["n"])
+                conn.execute("DELETE FROM memories")
+            return n
+        except Exception:
+            return 0
+
+    def _aux_write(self, session_id: str, **fields: Any) -> None:
+        if not session_id:
+            return
+        now = time.time()
+        pending = fields.get("pending")
+        recalled = fields.get("recalled")
+        tokens = fields.get("tokens")
+        with self._open() as conn:
+            conn.execute(
+                "INSERT INTO session_aux (session_id, pending, last_recalled, "
+                "last_tokens, updated_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET "
+                "pending = COALESCE(?, pending), "
+                "last_recalled = COALESCE(?, last_recalled), "
+                "last_tokens = COALESCE(?, last_tokens), "
+                "updated_at = excluded.updated_at",
+                (
+                    session_id,
+                    json.dumps(pending) if pending is not None else "[]",
+                    json.dumps(recalled) if recalled is not None else "[]",
+                    int(tokens or 0),
+                    now,
+                    json.dumps(pending) if pending is not None else None,
+                    json.dumps(recalled) if recalled is not None else None,
+                    None if tokens is None else int(tokens),
+                ),
+            )
+
+    def save_pending(self, session_id: str, asks: list[str]) -> None:
+        try:
+            self._aux_write(session_id, pending=list(asks or []))
+        except Exception:
+            return
+
+    def load_pending(self, session_id: str) -> list[str]:
+        try:
+            if not session_id:
+                return []
+            with self._open() as conn:
+                row = conn.execute(
+                    "SELECT pending FROM session_aux WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            if not row:
+                return []
+            data = json.loads(row["pending"] or "[]")
+            return [str(x) for x in data if str(x).strip()]
+        except Exception:
+            return []
+
+    def save_recall(self, session_id: str, recalled: list[dict[str, Any]],
+                    tokens: int = 0) -> None:
+        try:
+            slim = []
+            for item in recalled or []:
+                title = short_title(str(item.get("title") or item.get("text") or ""))
+                if not title:
+                    continue
+                slim.append({
+                    "id": str(item.get("id") or ""),
+                    "kind": str(item.get("kind") or ""),
+                    "title": title,
+                })
+            self._aux_write(session_id, recalled=slim, tokens=int(tokens or 0))
+        except Exception:
+            return
+
+    def load_recall(self, session_id: str) -> list[dict[str, Any]]:
+        try:
+            if not session_id:
+                return []
+            with self._open() as conn:
+                row = conn.execute(
+                    "SELECT last_recalled FROM session_aux WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            if not row:
+                return []
+            data = json.loads(row["last_recalled"] or "[]")
+            return [d for d in data if isinstance(d, dict)]
+        except Exception:
+            return []
+
+
+def short_id(mid: str) -> str:
+    return str(mid or "")[:8]
+
+
+def short_title(text: str, n: int = 40) -> str:
+    t = " ".join(str(text or "").split())
+    return t if len(t) <= n else t[: n - 1].rstrip() + "…"
+
+
 def update_summary(store: Optional[MemoryStore], session_id: str,
                    messages: Iterable[Any], recent_n: int,
                    budget_tokens: int) -> str:
@@ -423,20 +608,25 @@ def remember_turn(store: Optional[MemoryStore], session_id: str, *,
 
 
 def _ltm_block(store: Optional[MemoryStore], query: str, lang: str,
-               budget_tokens: int) -> str:
+               budget_tokens: int, with_hits: bool = False):
+    empty = ("", []) if with_hits else ""
     if store is None or not query or budget_tokens <= 0:
-        return ""
+        return empty
     hits = store.retrieve(query, budget_tokens=budget_tokens)
     if not hits:
-        return ""
+        return empty
     head = _HEAD.get(lang, _HEAD["en"])["ltm"]
     lines = [head]
+    slim = []
     for item in hits:
         kind = str(item.get("kind") or "note")
         text = _neutralize(item.get("text") or "", max_chars=400)
         if text:
             lines.append(f"- ({kind}) {text}")
-    return "\n".join(lines)
+            slim.append({"id": str(item.get("id") or ""), "kind": kind,
+                         "title": short_title(text), "text": text})
+    block = "\n".join(lines)
+    return (block, slim) if with_hits else block
 
 
 def _last_user(messages: Iterable[Any]) -> str:
@@ -473,9 +663,12 @@ def render_for_turn(store: Optional[MemoryStore], session_id: str,
                 parts.append(pending_text.strip())
         if options["long_term"]:
             q = query or _last_user(messages)
-            block = _ltm_block(store, q, lang, options["long_term_budget_tokens"])
+            block, hits = _ltm_block(store, q, lang, options["long_term_budget_tokens"],
+                                     with_hits=True)
             if block:
                 parts.append(block)
+            if store is not None and session_id:
+                store.save_recall(session_id, hits)
         return "\n\n".join(parts)
     except Exception:
         return ""

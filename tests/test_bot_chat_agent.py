@@ -33,12 +33,18 @@ class FakeCtx:
     def __init__(self, cfg=None):
         self.cfg = cfg or {}
         self.hooks = {}
+        self.commands = {}
 
     def get_config(self, key, default=None):
         return self.cfg.get(key, default)
 
     def register_hook(self, name, fn):
         self.hooks[name] = fn
+
+    def register_command(self, name, handler, description="", args_hint="", **k):
+        clean = str(name or "").lower().strip().lstrip("/")
+        if clean:
+            self.commands[clean] = handler
 
 
 def make_db(rows):

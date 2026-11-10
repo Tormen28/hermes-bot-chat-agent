@@ -32,6 +32,8 @@ If you want every detail, open a normal session: it stays exactly as it was.
 | Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models, kanban-lock bypasses) and asks you first. Covers both the Bot Chat session and its `delegate_task` / subagent child sessions. It never approves anything. |
 | Team | With no `team.assignees`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
 | Desktop | A quiet status bar above the composer (`Working… · <step>`, `Waiting for your OK`, `Waiting on <profile>`, `Done · <summary>`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
+| `/memoria` (alias `/memory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. `/memoria` replies in Spanish; `/memory` follows the plugin language (English by default). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
+| Status panel | A compact `[Status]` header in the turn context when there is something to show: running background tasks, pending asks, memories recalled this turn, and the compact token count. The Desktop bar can show the same line as a suffix. Toggle with `status_panel.enabled`. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
 The safety guard also protects `delegate_task` / subagent child sessions spawned from a Bot Chat (inheriting parent Bot Chat protection), while normal sessions and subagents of normal sessions behave exactly as before.
@@ -116,12 +118,18 @@ plugins:
           summary_budget_tokens: 400
           long_term_budget_tokens: 400
           max_entries: 500     # prune oldest when the store grows past this
+        status_panel:
+          enabled: true        # compact [Status] header; false hides it
 ```
 Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also treated as an outbound send.
 
 **Bounded context (Fase 2).** The turn context is split into stable instructions (≤300 tokens), project state, tasks and notices (≤1,500 tokens, 2,000 per piece), measured with the tokenizer. After the first full turn the team note is incremental — only what changed is injected; a turn with no changes injects one short line. Critical constraints are never dropped; anything else that does not fit is listed as dropped. The project card (`<HERMES_HOME>/bot-chat-agent/project-card.md`, wow 7) is the source of truth: manual edits always win, are versioned in the store, and derived content never writes the file. After a cancellation, a compaction or a reopen, the context is rebuilt from the durable store. The plugin also registers a delegating `ContextEngine` named `bot-chat` (no core change: compaction is still delegated to the core's `ContextCompressor`; only `select_context` is overridden) — activate it with `context.engine: bot-chat` in the core config (single slot; without it the `pre_llm_call` hook keeps injecting).
 
 **Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) — no model and no network. Secret-like text is not stored. Fail-open: a missing or corrupt store never breaks the turn. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
+
+**`/memoria` and `/memory`.** In a Bot Chat session type `/memoria` (Spanish labels) or `/memory` (English by default) to see the long-term store, the rolling summary and any pending asks. Each long-term row has an 8-character id: `/memory forget ab12cd34` drops one entry, `/memory edit ab12cd34 New text` corrects it, `/memory clear` asks for confirmation and `/memory clear confirm` erases every long-term row. Nothing is changed if the id is unknown or the store cannot be opened.
+
+**Status panel.** When a turn recalls memories, has pending asks or has running background tasks, `pre_llm_call` prepends a one-line `[Status]` header (recalled titles, pending count, task state, compact token count). Turns with nothing to report stay unchanged. Switch it off with `status_panel.enabled: false`. On Desktop the same text can appear as a suffix on the existing status bar when the host forwards a `bot-chat-status` event. A headless walkthrough is `demo/hackathon_demo.py`.
 
 
 ### Guard presets
