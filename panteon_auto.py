@@ -87,12 +87,29 @@ _KEYWORDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("documentación", "documentacion", "documentation", "readme", "notas", "notes", "wiki")),
 }
 
+_EXTRA_KEYWORDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    'daedalus': (('corrige le bug', 'corriger le bug', 'refactorise', 'refactoriser', "trace d'erreur", 'test unitaire', 'corrigir o bug', 'corrija o bug', 'refatore', 'refatorar', 'teste unitário', 'teste unitario', 'behebe den fehler', 'fehler beheben', 'refaktorier', 'unit-test', 'stacktrace'), ('fonction', 'fonctionnalité', 'erreur', 'fehler', 'funktion', 'função', 'funcao', 'erro', 'programme', 'programa', 'skript', 'depurar', 'débogue')),
+    'iris': (('maquette', 'palette de couleurs', 'paleta de cores', 'farbpalette', 'entwurf der oberfläche', 'design de tela', "conception de l'écran", 'logotipo', 'protótipo de tela'), ('conception', 'écran', 'interface', 'tela', 'bildschirm', 'oberfläche', 'couleurs', 'cores', 'farben', 'icône', 'ícone')),
+    'athena': (('recherche sur', 'compare les options', 'analyse de marché', 'pesquise sobre', 'compare as opções', 'análise de mercado', 'analyse des marktes', 'recherchiere', 'vergleiche die optionen', "état de l'art", 'estado da arte'), ('recherche', 'analyse', 'fontes', 'quellen', 'pesquisa', 'vergleich', 'comparaison', 'comparação', 'estude', 'étude')),
+    'calliope': (('rédige', 'écris un article', 'redija', 'escreva um artigo', 'schreibe einen artikel', 'verfasse', 'lettre de motivation', 'carta de apresentação', 'bewerbungsschreiben'), ('texte', 'brouillon', 'rascunho', 'entwurf', 'artigo', 'artikel', 'texto', 'rédaction', 'redação')),
+    'dionysus': (('boucle de jeu', 'prototype jouable', 'protótipo jogável', 'spielschleife', 'spielbarer prototyp', 'mécanique de jeu', 'mecânica de jogo', 'spielmechanik', 'conception de jeu', 'game-design'), ('jeu', 'niveau', 'personnage', 'jogo', 'nível', 'personagem', 'spiel', 'level', 'figur')),
+    'nike': (('revue de code', 'révise cette pr', 'revise este pr', 'teste este pr', 'codereview', 'plan de test', 'plano de testes', 'testplan', 'reproduis le bug', 'reproduza o bug'), ('vérifie', 'vérifier', 'reproduire', 'verifique', 'reproduzir', 'prüfe', 'überprüfe', 'tests')),
+    'mnemosyne': (('documente', 'documentation de', 'écris le readme', 'escreva o readme', 'dokumentiere', 'schreibe die readme', 'journal des décisions', 'registro de decisões', 'entscheidungslog', 'notes de passation'), ('documentation', 'documentação', 'dokumentation', 'notizen', 'wiki')),
+}
+for _pid, (_strong, _weak) in _EXTRA_KEYWORDS.items():
+    _s0, _w0 = _KEYWORDS[_pid]
+    _KEYWORDS[_pid] = (_s0 + _strong, _w0 + _weak)
+
 _YES = re.compile(
     r"^\s*(s[ií]+|sí|si por favor|dale|d[aá]le|ok(ay)?|okey|claro|va|venga|yes|yep|yeah|sure|please do|"
-    r"hazlo|cr[eé]alo|cr[eé]alos|adelante|por supuesto|de una|listo|perfecto|go ahead)\b[\s,.!¡]*"
-    r"(cr[eé]alo|cr[eé]alos|hazlo|please|por favor|gracias|thanks|do it|go ahead)?[\s.!]*$", re.I)
+    r"hazlo|cr[eé]alo|cr[eé]alos|adelante|por supuesto|de una|listo|perfecto|go ahead|"
+    r"oui|ouais|d'accord|vas-y|allez-y|bien s[uû]r|volontiers|sim|pode|pode criar|claro que sim|com certeza|"
+    r"vai|ja|jawohl|klar|gerne|mach das|in ordnung|na klar)\b[\s,.!¡]*"
+    r"(cr[eé]alo|cr[eé]alos|hazlo|please|por favor|gracias|thanks|do it|go ahead|"
+    r"cr[eé]e-le|s'il te pla[iî]t|merci|crie|pode criar|pode|por favor|obrigad[oa]|bitte|danke|erstelle es)?[\s.!]*$", re.I)
 _NO = re.compile(
-    r"^\s*(no+|nop|nope|no gracias|nah|mejor no|ahora no|not now|no thanks|no,? gracias|despu[eé]s)\b.*$", re.I)
+    r"^\s*(no+|nop|nope|no gracias|nah|mejor no|ahora no|not now|no thanks|no,? gracias|despu[eé]s|"
+    r"non|pas maintenant|non merci|n[aã]o|agora n[aã]o|n[aã]o obrigad[oa]|nein|nee|nicht jetzt|nein danke)\b.*$", re.I)
 
 
 def _l(lang: str) -> str:

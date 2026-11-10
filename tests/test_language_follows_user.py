@@ -159,3 +159,28 @@ class Pure(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class YesNoAndKeywordsInEveryLanguage(unittest.TestCase):
+    def test_yes_and_no(self):
+        for t in ("oui", "Oui, crée-le", "d'accord", "Sim", "Sim, pode criar", "Ja", "Ja, bitte", "klar", "sí", "yes"):
+            self.assertTrue(panteon_auto.is_yes(t), t)
+            self.assertFalse(panteon_auto.is_no(t), t)
+        for t in ("non", "non merci", "pas maintenant", "não", "agora não", "nein", "nein danke", "no", "not now"):
+            self.assertTrue(panteon_auto.is_no(t), t)
+            self.assertFalse(panteon_auto.is_yes(t), t)
+
+    def test_specialty_detected_in_other_languages(self):
+        self.assertEqual(panteon_auto.detect(
+            "Peux-tu corriger le bug dans la fonction de connexion, il y a une erreur dans le test unitaire ?"), "daedalus")
+        self.assertEqual(panteon_auto.detect(
+            "Você pode corrigir o bug na função de login? O teste unitário falha"), "daedalus")
+        self.assertEqual(panteon_auto.detect(
+            "Kannst du den Fehler in der Funktion beheben? Es gibt einen Unit-Test der fehlschlägt"), "daedalus")
+        self.assertEqual(panteon_auto.detect(
+            "Je voudrais une maquette et une palette de couleurs pour mon écran d'accueil"), "iris")
+
+    def test_no_false_offer_on_small_talk(self):
+        for t in ("Hola qué tal cómo estás hoy", "Bonjour, comment vas-tu aujourd'hui ?",
+                  "Ich möchte eine Webseite für meine Bäckerei erstellen"):
+            self.assertIsNone(panteon_auto.detect(t), t)
