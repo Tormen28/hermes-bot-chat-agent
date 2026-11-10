@@ -157,3 +157,21 @@ Hay un camino que no necesita Electron: **la versión web de Hermes** (`hermes w
 1. ¿Doy luz verde a P0–P5 en la box (sin tocar tu PC ni subir nada)?
 2. ¿Confirmas que los dioses de tu equipo personal van como configuración (`team.assignees`) y nunca dentro del plugin público?
 3. P6 y P7 son en tu PC: ¿los hace Antigravity o yo cuando vuelva la luz?
+
+## 8. Panteón genérico (alcance añadido)
+
+Función opcional del plugin público: `/pantheon` (alias `/panteon`). El coordinador es el perfil con el que ya hablas (Hermes); los "dioses" son perfiles normales de Hermes con un rol (presets neutros: daedalus código, iris diseño, athena investigación, calliope escritura, dionysus juegos, nike QA, mnemosyne docs). Se crean con las funciones del core (`hermes_cli.profiles.create_profile`), aparecen como filas del panel Bots stock y la delegación va por kanban/`team.assignees` y `message_agent`. Nada se crea sin la palabra `confirm`. Los dioses personales de Gustavo van solo como configuración (`team.assignees`), nunca en el código público. Código: `panteon.py`; pruebas: `tests/test_panteon.py` (25, incluye pruebas contra el core real).
+
+## 9. Resultados de la ejecución P0–P5 (box, 2026-11-10)
+
+| Paso | Resultado |
+|---|---|
+| P0 línea base | Suite completa contra core v0.23.1: 339 pasaban al inicio; tras los últimos cambios: 344 pasan, 0 fallan. |
+| P1 compatibilidad | Carga real con PluginManager en v0.23.1 y en el core de #151935: OK. Sin `state.*` el plugin degrada (ruta "offer"). Declarar `capabilities` en stock da aviso "unknown capability": no se declara. |
+| P2 tarjeta | **Parcial.** La tarjeta se ve en Hermes real. No se implementó el seguimiento de `message_agent`: su respuesta vuelve como notificación de proceso y no hay evidencia para poner "listo" sin inventar. |
+| P3 nombre | Hecho: el nombre sale del perfil, no del título de la sesión. En la captura real dice "Hermes". |
+| P4 memoria | **Parcial en Hermes real:** en un Bot Chat real (modelo simulado), `Decision:` se guardó y el turno siguiente mostró "Recalled: ...". No se probó entre dos sesiones distintas ni el menú de `/botmemory`. |
+| P5 captura | **Hecha, real**: `/workspace/hackathon/hermes-bot-real.png` (Hermes Webapp v0.23.1 compilado de fuente; modelo simulado; perfil de prueba). La ejecución real mostró dos cosas: (1) la mitad de escritorio de un paquete unificado llega **apagada** y hay que activarla en Capabilities → Plugins; (2) la tarjeta usaba colores de tema oscuro y se veía como un bloque gris ilegible en el tema claro: corregido (usa `--ui-bg-secondary`, `--ui-text-*` del host). |
+| Capturas mock | `04-status-card.png` y `bot-chat-status-card.png` movidas a `/workspace/_archivo-plugin-aparte/` con nota; quitadas de los README. |
+
+Pendiente (P6/P7, en tu PC): medir la lentitud en sesión larga con `context.engine: bot-chat` (hoy inactivo; pasar tests **no** demuestra que la lentitud esté arreglada) e instalar con respaldo.

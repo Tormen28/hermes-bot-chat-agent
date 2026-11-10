@@ -421,25 +421,25 @@ const DOT_COLOR = {
 const BAR_STYLE = {
   display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 12px', margin: '0 8px 6px',
   borderRadius: '8px', fontSize: '12px', lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden',
-  textOverflow: 'ellipsis', color: 'var(--ui-text-secondary, #cbd5e1)',
-  background: 'var(--ui-surface-secondary, rgba(30,41,59,.65))',
-  border: '1px solid var(--ui-stroke-tertiary, rgba(148,163,184,.18))'
+  textOverflow: 'ellipsis', color: 'var(--ui-text-secondary, inherit)',
+  background: 'var(--ui-bg-secondary, rgba(127,127,127,.10))',
+  border: '1px solid var(--ui-stroke-tertiary, rgba(127,127,127,.25))'
 }
 
 const CARD_STYLE = {
   display: 'flex', flexDirection: 'column', gap: '6px',
   padding: '8px 12px 10px', margin: '0 8px 6px',
   borderRadius: '8px', fontSize: '12px', lineHeight: 1.4,
-  color: 'var(--ui-text-secondary, #cbd5e1)',
-  background: 'var(--ui-surface-secondary, rgba(30,41,59,.65))',
-  border: '1px solid var(--ui-stroke-tertiary, rgba(148,163,184,.18))'
+  color: 'var(--ui-text-secondary, inherit)',
+  background: 'var(--ui-bg-secondary, rgba(127,127,127,.10))',
+  border: '1px solid var(--ui-stroke-tertiary, rgba(127,127,127,.25))'
 }
-const MUTED = { color: 'var(--ui-text-tertiary, #94a3b8)', fontSize: '11px' }
+const MUTED = { color: 'var(--ui-text-tertiary, inherit)', fontSize: '11px' }
 const ROW = { display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 }
 const PILL = {
   display: 'inline-flex', alignItems: 'center', gap: '4px',
   padding: '1px 6px', borderRadius: '9999px', fontSize: '10px',
-  background: 'rgba(56,189,248,.12)', color: 'var(--ui-text-secondary, #cbd5e1)'
+  background: 'rgba(56,189,248,.12)', color: 'var(--ui-text-secondary, inherit)'
 }
 const WARN = { color: 'var(--ui-warning, #f59e0b)', fontSize: '11px' }
 
@@ -478,7 +478,7 @@ function StatusBar() {
   if (model.activeBot && model.activeBot.name) {
     kids.push(jsxs('div', { style: ROW, children: [
       jsx('span', { style: PILL, children: model.labels.active }),
-      jsx('strong', { style: { fontWeight: 600, color: 'var(--ui-text-primary, #e2e8f0)' }, children: model.activeBot.name }),
+      jsx('strong', { style: { fontWeight: 600, color: 'var(--ui-text-primary, inherit)' }, children: model.activeBot.name }),
       jsx('span', { style: MUTED, children: model.activeBot.state || '' })
     ] }))
   }
