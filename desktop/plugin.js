@@ -589,7 +589,7 @@ function StatusBar() {
   const s = useValue($bar)
   const panel = useValue($panel)
   const open = useValue($open)
-  const model = buildCardModel(panel, lang)
+  const model = buildCardModel(panel, pickLang())
   if (!s.active && !model.visible) return null
   const dot = DOT_COLOR[s.phase] || (model.hasStalled ? DOT_COLOR.waiting_ok : DOT_COLOR.panel)
   const headline = s.active && s.text ? s.text : (model.summary || model.labels.showMore)

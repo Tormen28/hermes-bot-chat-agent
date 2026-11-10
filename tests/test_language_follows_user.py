@@ -186,3 +186,14 @@ class YesNoAndKeywordsInEveryLanguage(unittest.TestCase):
         for t in ("Hola qué tal cómo estás hoy", "Bonjour, comment vas-tu aujourd'hui ?",
                   "Ich möchte eine Webseite für meine Bäckerei erstellen"):
             self.assertIsNone(panteon_auto.detect(t), t)
+
+
+class DesktopSourceSanity(unittest.TestCase):
+    def test_no_free_lang_identifier_in_components(self):
+        """Caught live: a removed ``const lang`` made StatusBar throw and the whole card vanished."""
+        import re
+        src = (ROOT / "desktop" / "plugin.js").read_text(encoding="utf-8")
+        body = src[src.index("function StatusBar()"):]
+        body = body[:body.index("\n}\n")]
+        self.assertIsNone(re.search(r"(?<![\w.'])lang(?![\w:'])", body), "StatusBar uses an undeclared `lang`")
+        self.assertIn("pickLang()", body)
