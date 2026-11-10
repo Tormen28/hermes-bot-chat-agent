@@ -82,6 +82,10 @@ def _extract_tui_shim(core: Path, rev: str) -> Path:
     se toca."""
     out = Path(tempfile.mkdtemp(prefix="fase3b-tui-shim-")) / "tui_gateway"
     out.mkdir(parents=True)
+    if (core / "tui_gateway" / "__init__.py").is_file():
+        # Full checkout / release tarball (no partial clone): the real files are
+        # already importable from ``core``; the shim stays empty and unused.
+        return out.parent
     for name in ("__init__.py", "launch_profile_policy.py"):
         proc = subprocess.run(
             ["git", "-C", str(core), "-c", "gc.auto=0", "show",

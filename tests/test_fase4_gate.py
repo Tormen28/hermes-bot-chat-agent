@@ -445,20 +445,28 @@ class TestCoreDegradation(TeamBase):
         self.assertEqual(status, "blocked")
 
 
+def _core_plugins_text(rev):
+    """``hermes_cli/plugins.py`` at *rev* via git; when the checkout has no history
+    (release tarball, e.g. v0.23.1) fall back to the working-tree file."""
+    try:
+        out = subprocess.run(
+            ["git", "show", f"{rev}:hermes_cli/plugins.py"],
+            cwd=str(CORE_CHECKOUT), capture_output=True, text=True, timeout=60)
+        if out.returncode == 0 and out.stdout:
+            return out.stdout
+    except Exception:  # pragma: no cover - entorno sin git
+        pass
+    path = CORE_CHECKOUT / "hermes_cli" / "plugins.py"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 class TestLiveCoreHooks(unittest.TestCase):
     """Los hooks que se usan existen en el vivo 2bd378ed (v0.23.0)."""
 
     def test_hooks_exist_in_live_core(self):
         if not (CORE_CHECKOUT / "hermes_cli" / "plugins.py").exists():
             self.skipTest("sin checkout del core en este entorno")
-        try:
-            text = subprocess.run(
-                ["git", "show", f"{CORE_REV}:hermes_cli/plugins.py"],
-                cwd=str(CORE_CHECKOUT), capture_output=True, text=True,
-                timeout=60,
-            ).stdout
-        except Exception as exc:  # pragma: no cover - entorno sin git
-            self.skipTest(f"git no disponible: {exc}")
+        text = _core_plugins_text(CORE_REV)
         # VALID_HOOKS se cierra con `}` a principio de línea; el cuerpo
         # contiene comentarios con llaves, así que no vale `[^}]*`.
         valid = re.search(r"VALID_HOOKS.*?=\s*\{(.*?)\n\}", text, re.S)
@@ -476,17 +484,9 @@ class TestLiveCoreHooks(unittest.TestCase):
         floor = m.group(1)
         if not (CORE_CHECKOUT / "hermes_cli" / "plugins.py").exists():
             self.skipTest("sin checkout del core en este entorno")
-        try:
-            out = subprocess.run(
-                ["git", "show", f"v{floor}:hermes_cli/plugins.py"],
-                cwd=str(CORE_CHECKOUT), capture_output=True, text=True,
-                timeout=60,
-            )
-        except Exception as exc:  # pragma: no cover - entorno sin git
-            self.skipTest(f"git no disponible: {exc}")
-        self.assertEqual(out.returncode, 0,
-                         f"no hay tag v{floor} en el core")
-        valid = re.search(r"VALID_HOOKS.*?=\s*\{(.*?)\n\}", out.stdout, re.S)
+        text = _core_plugins_text(f"v{floor}")
+        self.assertTrue(text, f"no hay tag v{floor} ni archivo en el core")
+        valid = re.search(r"VALID_HOOKS.*?=\s*\{(.*?)\n\}", text, re.S)
         self.assertIsNotNone(valid, "VALID_HOOKS no localizado en el tag")
         body = valid.group(1)
         for hook in REQUIRED_HOOKS:

@@ -82,7 +82,7 @@ def render(*, lang: str = "en", enabled: bool = True,
 
 import json
 import os
-import tempfile
+import uuid
 import time
 from pathlib import Path
 
@@ -309,7 +309,7 @@ def snapshot(*, lang: str = "en", enabled: bool = True, origin: str = "",
             "recalled": rec_rows,
             "context_tokens": int(context_tokens or 0),
             "stalled_after_seconds": threshold,
-            "hint": hint or ("/memoria" if lang == "es" else "/memory"),
+            "hint": hint or ("/memoria" if lang == "es" else "/botmemory"),
         }
     except Exception:
         return {"enabled": False, "bots": [], "delegations": [], "tasks": [],
@@ -322,9 +322,11 @@ def write_snapshot(path: Path | str, payload: dict[str, Any] | None) -> bool:
         dest = Path(path)
         dest.parent.mkdir(parents=True, exist_ok=True)
         data = json.dumps(payload or {}, ensure_ascii=False, indent=2)
-        fd, tmp = tempfile.mkstemp(prefix="status-", suffix=".json", dir=str(dest.parent))
+        # Explicit temp path (not mkstemp+fdopen) so the R26 disclosure audit sees a real
+        # path under HERMES_HOME instead of a bare file descriptor.
+        tmp = str(dest.parent / f".status-{os.getpid()}-{uuid.uuid4().hex[:8]}.json")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(data)
                 fh.flush()
                 os.fsync(fh.fileno())
