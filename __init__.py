@@ -1581,6 +1581,28 @@ def _on_post_tool_call(tool_name: str = "", args: Any = None, result: Any = None
     return {"untrusted": True, "tool": str(tool_name or ""), "markers": markers}
 
 
+def _refusal_notice(tool_name: str, args: Any, result: Any, session_id: str) -> Optional[str]:
+    """When the core's bot loop guard refused a ``message_agent`` call, add a plain explanation and
+    next step (in the user's language) to the tool result, so the coordinator tells the user why it
+    stopped instead of retrying or going quiet. Still valid JSON. None when it does not apply."""
+    if str(tool_name or "").strip().lower() != "message_agent":
+        return None
+    data = _dm_delegations._parse(result)
+    if not isinstance(data, dict) or not data.get("error") or data.get("bot_chat_note"):
+        return None
+    reason, limit = _dm_delegations.classify_refusal(data.get("error"))
+    if not reason:
+        return None
+    lang = _ulang(session_id)
+    to = _dm_delegations._target_name(args, data) or "that bot"
+    note = _status_panel.reason_note(reason, lang, limit)
+    data["bot_chat_note"] = (
+        f"[bot-chat-agent] The delegation to {to} was stopped on purpose by Hermes' loop guard "
+        f"(it is not a failure of {to}). Tell the user, plainly and in {_lang_detect.NAMES[lang]}, in one or "
+        f"two sentences, why it stopped and what they can do: {note} Do not retry the same message.")
+    return json.dumps(data, ensure_ascii=False)
+
+
 def _on_transform_tool_result(tool_name: str = "", args: Any = None, result: Any = None,
                               session_id: str = "", **kw: Any) -> Optional[str]:
     """Wrap tool output that looks like an injection as labelled, untrusted data.
@@ -1589,6 +1611,13 @@ def _on_transform_tool_result(tool_name: str = "", args: Any = None, result: Any
     enters the context (fail-open). We return ``None`` for clean output, so
     the common path costs one bounded regex scan.
     """
+    try:
+        if isinstance(result, str) and _in_scope(session_id, kw.get("parent_session_id")):
+            noted = _refusal_notice(tool_name, args, result, session_id or "")
+            if noted:
+                return noted
+    except Exception as exc:
+        logger.debug("%s: refusal notice skipped: %s", PLUGIN_ID, exc)
     try:
         if not isinstance(result, str) or not result or result.startswith(("[bot-chat-agent] This tool output",
                                                                           "[bot-chat-agent] La salida")):

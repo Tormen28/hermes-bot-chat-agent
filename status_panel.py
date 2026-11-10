@@ -102,6 +102,7 @@ _GENERIC_TITLES = {"bot chat", "bot-chat", ""}
 
 _DELEGATION_STATE = {
     "en": {
+        "stopped": "stopped",
         "received": "waiting for reply",
         "queued": "waiting for reply",
         "waiting": "waiting for reply",
@@ -112,6 +113,7 @@ _DELEGATION_STATE = {
         "cancelled": "cancelled",
     },
     "es": {
+        "stopped": "detenida",
         "received": "esperando respuesta",
         "queued": "esperando respuesta",
         "waiting": "esperando respuesta",
@@ -122,21 +124,59 @@ _DELEGATION_STATE = {
         "cancelled": "cancelado",
     },
     "fr": {
+        "stopped": "arrêtée",
         "received": "en attente de réponse", "queued": "en attente de réponse",
         "waiting": "en attente de réponse", "blocked": "bloqué", "working": "en cours",
         "ready": "terminé", "error": "erreur", "cancelled": "annulé",
     },
     "pt": {
+        "stopped": "interrompida",
         "received": "aguardando resposta", "queued": "aguardando resposta",
         "waiting": "aguardando resposta", "blocked": "bloqueado", "working": "trabalhando",
         "ready": "pronto", "error": "erro", "cancelled": "cancelado",
     },
     "de": {
+        "stopped": "gestoppt",
         "received": "wartet auf Antwort", "queued": "wartet auf Antwort",
         "waiting": "wartet auf Antwort", "blocked": "blockiert", "working": "arbeitet",
         "ready": "fertig", "error": "Fehler", "cancelled": "abgebrochen",
     },
 }
+_STOPPED = {"en": "stopped", "es": "detenida", "fr": "arrêtée", "pt": "interrompida", "de": "gestoppt"}
+
+# Plain-language reason + what to do, shown under a delegation the core's loop guard refused.
+_REASON_NOTE = {
+    "hop_limit": {
+        "en": "this chat reached the limit of {n} bot-to-bot messages, so nothing more was sent. Ask me to answer directly, or send a new message to continue.",
+        "es": "este chat llegó al límite de {n} mensajes entre bots, así que no se envió nada más. Pídeme que responda directamente o envía un mensaje nuevo para continuar.",
+        "fr": "ce chat a atteint la limite de {n} messages entre bots, donc rien d'autre n'a été envoyé. Demande-moi de répondre directement, ou envoie un nouveau message pour continuer.",
+        "pt": "este chat atingiu o limite de {n} mensagens entre bots, então nada mais foi enviado. Peça para eu responder diretamente ou envie uma nova mensagem para continuar.",
+        "de": "dieser Chat hat das Limit von {n} Bot-zu-Bot-Nachrichten erreicht, daher wurde nichts mehr gesendet. Bitte mich, direkt zu antworten, oder schick eine neue Nachricht, um weiterzumachen.",
+    },
+    "no_reply_needed": {
+        "en": "that bot's reply needed no answer, so the exchange is over. Nothing to do; ask me for the result.",
+        "es": "la respuesta de ese bot no necesitaba contestación, así que el intercambio terminó. No hay nada que hacer; pídeme el resultado.",
+        "fr": "la réponse de ce bot n'appelait pas de réponse, donc l'échange est terminé. Rien à faire ; demande-moi le résultat.",
+        "pt": "a resposta desse bot não precisava de resposta, então a conversa terminou. Nada a fazer; peça o resultado para mim.",
+        "de": "die Antwort dieses Bots brauchte keine Antwort, der Austausch ist damit beendet. Nichts zu tun; frag mich nach dem Ergebnis.",
+    },
+    "duplicate": {
+        "en": "the same request was already sent to that bot. Wait for its answer, or send something new.",
+        "es": "esa misma petición ya se le envió a ese bot. Espera su respuesta o envía algo nuevo.",
+        "fr": "la même demande a déjà été envoyée à ce bot. Attends sa réponse ou envoie autre chose.",
+        "pt": "o mesmo pedido já foi enviado a esse bot. Aguarde a resposta dele ou envie algo novo.",
+        "de": "dieselbe Anfrage wurde diesem Bot schon geschickt. Warte auf seine Antwort oder schick etwas Neues.",
+    },
+}
+
+
+def reason_note(reason: str, lang: str = "en", limit: int = 0) -> str:
+    row = _REASON_NOTE.get(str(reason or ""))
+    if not row:
+        return ""
+    return row.get(_ulang(lang), row["en"]).format(n=limit or 4)
+
+
 _STALLED = {"en": "stalled", "es": "sin avance", "fr": "sans progrès", "pt": "sem progresso", "de": "keine Fortschritte"}
 
 MAX_CARD_DELEGATIONS = 4
@@ -209,7 +249,10 @@ def delegation_line(item: dict[str, Any] | None, lang: str = "en") -> str:
         if not dst:
             return ""
         lang = _ulang(lang)
-        state = delegation_state_label(str(row.get("state") or row.get("status") or "waiting"), lang)
+        raw_state = str(row.get("state") or row.get("status") or "waiting")
+        if raw_state == "error" and row.get("reason"):
+            raw_state = "stopped"  # the core refused it on purpose: not a failure of the teammate
+        state = delegation_state_label(raw_state, lang)
         line = f"{src} → {dst}: {state}"
         if row.get("stalled"):
             line += " · " + _STALLED[lang]
@@ -245,6 +288,8 @@ def _normalize_task(task: dict[str, Any], *, origin: str, now: float,
         "stalled": stalled,
         "from": origin or "Bot Chat",
         "to": assignee,
+        "reason": str(task.get("reason") or ""),
+        "limit": int(task.get("limit") or 0),
     }
 
 
@@ -257,6 +302,8 @@ def _delegation_from_task(task: dict[str, Any]) -> dict[str, Any]:
         "elapsed_seconds": int(task.get("elapsed_seconds") or 0),
         "stalled": bool(task.get("stalled")),
         "task_id": task.get("task_id") or "",
+        "reason": task.get("reason") or "",
+        "limit": int(task.get("limit") or 0),
     }
 
 
@@ -328,6 +375,9 @@ def snapshot(*, lang: str = "en", enabled: bool = True, origin: str = "",
                          key=lambda t: (0 if str(t.get("status") or "") in _OPEN else 1,
                                         -float(t.get("updated_at") or 0)))
         delegations = [_delegation_from_task(t) for t in ordered[:MAX_CARD_DELEGATIONS]]
+        for d in delegations:
+            if d.get("reason"):
+                d["note"] = reason_note(d["reason"], lang, int(d.get("limit") or 0))
         active, others = _bots(origin, session_id, norm, pending_list, lang)
         return {
             "enabled": True,

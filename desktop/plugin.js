@@ -392,22 +392,27 @@ export function applyTeamEvent(state, name, payload) {
 
 const DELEGATION_STATE = {
   en: {
+    stopped: 'stopped',
     received: 'waiting for reply', queued: 'waiting for reply', waiting: 'waiting for reply',
     working: 'working', blocked: 'blocked', ready: 'done', error: 'error', cancelled: 'cancelled'
   },
   es: {
+    stopped: 'detenida',
     received: 'esperando respuesta', queued: 'esperando respuesta', waiting: 'esperando respuesta',
     working: 'trabajando', blocked: 'bloqueado', ready: 'listo', error: 'error', cancelled: 'cancelado'
   },
   fr: {
+    stopped: 'arrêtée',
     received: 'en attente de réponse', queued: 'en attente de réponse', waiting: 'en attente de réponse',
     working: 'en cours', blocked: 'bloqué', ready: 'terminé', error: 'erreur', cancelled: 'annulé'
   },
   pt: {
+    stopped: 'interrompida',
     received: 'aguardando resposta', queued: 'aguardando resposta', waiting: 'aguardando resposta',
     working: 'trabalhando', blocked: 'bloqueado', ready: 'pronto', error: 'erro', cancelled: 'cancelado'
   },
   de: {
+    stopped: 'gestoppt',
     received: 'wartet auf Antwort', queued: 'wartet auf Antwort', waiting: 'wartet auf Antwort',
     working: 'arbeitet', blocked: 'blockiert', ready: 'fertig', error: 'Fehler', cancelled: 'abgebrochen'
   }
@@ -429,7 +434,8 @@ export function delegationLine(item, lang) {
   const dst = String(row.to || row.assignee || '').trim()
   if (!dst) return ''
   const l = I18N[lang] ? lang : 'en'
-  const key = String(row.state || row.status || 'waiting')
+  let key = String(row.state || row.status || 'waiting')
+  if (key === 'error' && row.reason) key = 'stopped'
   const state = (DELEGATION_STATE[l] && DELEGATION_STATE[l][key]) || DELEGATION_STATE[l].waiting
   let line = `${src} → ${dst}: ${state}`
   if (row.stalled) line += ' · ' + I18N[l].stalled
@@ -488,14 +494,15 @@ export function buildCardModel(raw, lang) {
   const delegations = s.delegations.map(d => {
     const text = delegationLine(d, l)
     const elapsed = formatElapsed(d.elapsed_seconds)
-    return { text, elapsed, stalled: Boolean(d.stalled), title: String(d.title || '') }
+    const note = String(d.note || '').trim()
+    return { text: note ? `${text} — ${note}` : text, line: text, elapsed, stalled: Boolean(d.stalled), title: String(d.title || ''), note }
   }).filter(d => d.text)
   const pending = s.pending.slice(0, 3)
   const recalled = s.recalled.map(r => String(r.title || r.text || '').trim()).filter(Boolean).slice(0, 3)
   const hasStalled = delegations.some(d => d.stalled) || s.tasks.some(task => task && task.stalled)
   const bits = []
   if (activeBot && activeBot.name) bits.push(activeBot.name)
-  if (delegations[0]) bits.push(delegations[0].text)
+  if (delegations[0]) bits.push(delegations[0].line || delegations[0].text)
   if (hasStalled) bits.push(t.stalled)
   if (s.context_tokens > 0) bits.push(`${s.context_tokens} tok`)
   return {

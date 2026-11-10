@@ -36,6 +36,13 @@ CARD_ERROR_SECONDS = 60 * 60
 _NOTICE_HEAD = re.compile(r"\[IMPORTANT:\s*(?:\d+\s+)?background process", re.I)
 _FINISHED = re.compile(r"(task finished|finished|completed|exited with code 0|tarea (?:terminada|finalizada)|termin[oó])", re.I)
 _FAILED = re.compile(r"(task failed|failed|fall[oó]|exit[_ ]code\s*[=:]?\s*-?[1-9]|exited with code [1-9]|timed out|error)", re.I)
+# Why the core refused a message_agent call (agent/bot_chain.py). The sentences are the core's own;
+# anything that does not match stays a plain "error".
+_REFUSALS = (
+    ("hop_limit", re.compile(r"already reached its limit of (\d+) messages|bot_loop_guard", re.I)),
+    ("no_reply_needed", re.compile(r"needs no answer|exchange is over", re.I)),
+    ("duplicate", re.compile(r"already sent this exact message", re.I)),
+)
 _EXIT0 = re.compile(r"exit[_ ]code\s*[=:]?\s*0\b", re.I)
 
 
@@ -85,6 +92,25 @@ def _target_name(args: Any, data: dict[str, Any]) -> str:
     return str(raw or "").strip().lstrip("@").split(" on ")[0].strip()
 
 
+def classify_refusal(text: Any) -> tuple[str, int]:
+    """(reason, limit) when the core's loop guard refused the call, else ("", 0)."""
+    t = str(text or "")
+    for code, rx in _REFUSALS:
+        m = rx.search(t)
+        if m:
+            limit = 0
+            if code == "hop_limit":
+                try:
+                    limit = int(m.group(1)) if m.lastindex else 0
+                except Exception:
+                    limit = 0
+                if not limit:
+                    n = re.search(r"max_hops\D{0,6}(\d+)|limit of (\d+)", t)
+                    limit = int(next((g for g in (n.groups() if n else ()) if g), 0) or 0)
+            return code, limit
+    return "", 0
+
+
 def record_call(args: Any, result: Any, *, session_id: str = "", origin: str = "",
                 now: float | None = None, path: Path | None = None) -> Optional[dict[str, Any]]:
     """Register the ack (or the refusal) of one ``message_agent`` call. None when unusable."""
@@ -99,8 +125,10 @@ def record_call(args: Any, result: Any, *, session_id: str = "", origin: str = "
     title = " ".join(str(a.get("message") or a.get("content") or "").split())
     if len(title) > 80:
         title = title[:80].rsplit(" ", 1)[0].rstrip(" ,.;:") + "…"
+    reason, limit = ("", 0)
     if data.get("error"):
         state, did = "error", f"err-{uuid.uuid4().hex[:8]}"
+        reason, limit = classify_refusal(data.get("error"))
     elif str(data.get("status") or "").lower() in ("queued", "delivered", "accepted") and data.get("delivery_id"):
         state, did = "queued", str(data["delivery_id"])
     else:
@@ -110,6 +138,8 @@ def record_call(args: Any, result: Any, *, session_id: str = "", origin: str = "
         return None
     item = {"id": did, "session_id": session_id or "", "from": origin or "", "to": to, "title": title,
             "state": state, "created_at": t, "updated_at": t, "evidence": "ack" if state == "queued" else str(data.get("error"))[:120]}
+    if reason:
+        item["reason"], item["limit"] = reason, limit
     items.append(item)
     _save(items, path)
     return item
@@ -177,5 +207,6 @@ def as_status_tasks(session_id: str = "", *, now: float | None = None, path: Pat
                     "status": {"queued": "queued", "ready": "ready", "error": "error"}.get(it["state"], "queued"),
                     "assignee": it.get("to"), "session_id": it.get("session_id") or "",
                     "created_at": it.get("created_at"), "updated_at": it.get("updated_at"),
-                    "source": "message_agent", "evidence": it.get("evidence")})
+                    "source": "message_agent", "evidence": it.get("evidence"),
+                    "reason": it.get("reason") or "", "limit": int(it.get("limit") or 0)})
     return out
