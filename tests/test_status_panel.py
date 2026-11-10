@@ -147,7 +147,11 @@ class TestStatusSnapshot(unittest.TestCase):
         bad = home / "status.json"
         bad.write_text("{not-json", encoding="utf-8")
         self.assertEqual(self.sp.read_snapshot(bad), {})
-        self.assertFalse(self.sp.write_snapshot(Path("/proc/this-cannot-be-written/status.json"), {"enabled": True}))
+        # A path whose parent is a regular file cannot be created on any OS
+        # (the old "/proc/..." path silently succeeded on Windows and left C:\\proc behind).
+        blocker = home / "blocker"
+        blocker.write_text("x", encoding="utf-8")
+        self.assertFalse(self.sp.write_snapshot(blocker / "status.json", {"enabled": True}))
 
     def test_delegation_lines_bilingual_and_done(self):
         waiting = {"from": "Padre", "to": "Hefesto", "state": "waiting", "elapsed_seconds": 40, "stalled": False}

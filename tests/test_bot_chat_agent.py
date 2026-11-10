@@ -329,7 +329,13 @@ assert.strictEqual(queued.queued, 'researcher');
 assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: false, queued: 'researcher' }), { active: true, phase: 'queued', blocked: false, text: 'Queued · researcher' });
 console.log('NODE_OK');
 """
-        proc = subprocess.run([node, "-e", harness], capture_output=True, text=True, timeout=5)
+        # Run from a temp file: the whole desktop/plugin.js inline exceeds the Windows
+        # command-line limit (WinError 206) when passed with `node -e`.
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="bca-node-") as td:
+            script = Path(td) / "phase_logic.cjs"
+            script.write_text(harness, encoding="utf-8")
+            proc = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("NODE_OK", proc.stdout)
 
