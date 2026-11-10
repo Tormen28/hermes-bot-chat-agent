@@ -628,14 +628,24 @@ function setup(ctx) {
         running.add(r.id)
         let ok = true
         let error = ''
-        try {
-          await host.request('profiles.create', {
-            name: String(r.name), description: String(r.description || ''),
-            clone_from: String(r.clone_from || 'default'), soul: String(r.soul || ''), no_alias: true
-          })
-        } catch (e) {
-          error = String((e && e.message) || e || '').slice(0, 200)
-          ok = /exist/i.test(error)
+        // The stock clone can fail transiently on a brand-new install (it copies the skills tree while
+        // the first sync is still writing it: ENOENT on a file that is there a moment later). Retry a
+        // couple of times before telling the user it failed; "already exists" counts as done.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await host.request('profiles.create', {
+              name: String(r.name), description: String(r.description || ''),
+              clone_from: String(r.clone_from || 'default'), soul: String(r.soul || ''), no_alias: true
+            })
+            ok = true
+            error = ''
+            break
+          } catch (e) {
+            error = String((e && e.message) || e || '').slice(0, 200)
+            ok = /exist/i.test(error)
+            if (ok) break
+            if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500))
+          }
         }
         if (ok && r.ui_meta && typeof r.ui_meta === 'object') {
           // make it a real Bot Mode bot (same ui_meta the Bots panel writes), best effort
