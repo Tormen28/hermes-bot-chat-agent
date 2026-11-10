@@ -83,6 +83,26 @@ _CUES: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
 }
 
+# Explicit "keep this in mind" requests and decision cues in other languages. A user typing
+# "Remember that I prefer short answers" expects it to stick; these only fire on the USER's own
+# words (an assistant saying "I will remember that ..." must not write memory).
+_USER_CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("decision", re.compile(r"(?i)(?:^|(?<=[.!?])\s+)remember(?:\s+that)?\s*[:,]?\s+(.+)")),
+    ("decision", re.compile(r"(?i)(?:^|(?<=[.!?])\s+)(?:please\s+)?keep in mind(?:\s+that)?\s*[:,]?\s+(.+)")),
+    ("decision", re.compile(r"(?i)\bfrom now on\s*,?\s+(.+)")),
+    ("decision", re.compile(r"(?i)(?:^|(?<=[.!?])\s+)recuerda(?:\s+que)?\s*[:,]?\s+(.+)")),
+    ("decision", re.compile(r"(?i)(?:^|(?<=[.!?])\s+)(?:ten en cuenta|no olvides)(?:\s+que)?\s*[:,]?\s+(.+)")),
+    ("decision", re.compile(r"(?i)\bde ahora en adelante\s*,?\s+(.+)")),
+    ("decision", re.compile(r"(?i)\bd[ée]cision\s*:\s*(.+)")),      # fr
+    ("decision", re.compile(r"(?i)\bnous avons d[ée]cid[ée](?:\s+de)?\s+(.+)")),
+    ("decision", re.compile(r"(?i)\bdecis[aã]o\s*:\s*(.+)")),       # pt
+    ("decision", re.compile(r"(?i)\bdecidimos\s+(.+)")),
+    ("decision", re.compile(r"(?i)\bentscheidung\s*:\s*(.+)")),      # de
+    ("decision", re.compile(r"(?i)\bwir haben (?:uns )?entschieden(?:,)?\s+(.+)")),
+    ("lesson", re.compile(r"(?i)\bli[cç][aã]o\s*:\s*(.+)")),         # pt
+    ("lesson", re.compile(r"(?i)\bli[cç]on\s*:\s*(.+)")),            # fr (leçon)
+)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
   id TEXT PRIMARY KEY,
@@ -219,6 +239,17 @@ def extract_memories(user_text: str, assistant_text: str) -> list[tuple[str, str
         return []
     found: list[tuple[str, str]] = []
     seen: set[str] = set()
+    ublob = " ".join((user_text or "").split())
+    for kind, cue in _USER_CUES:
+        for match in cue.finditer(ublob):
+            body = _sentence(match.group(1))
+            if len(body) < 8 or looks_like_secret(body):
+                continue
+            key = f"{kind}:{body.lower()}"
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append((kind, body))
     for kind, cues in _CUES.items():
         for cue in cues:
             for match in cue.finditer(blob):
