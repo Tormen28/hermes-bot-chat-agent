@@ -106,6 +106,7 @@ class ChatNotice(Base):
             note = data["bot_chat_note"]
             self.assertIn(f"in {names[lang]}", note, lang)
             self.assertIn("Do not retry", note)
+            self.assertNotIn("[bot-chat-agent]", note, "the Desktop bar treats that marker as a guard block")
             self.assertIn("4", note)
 
     def test_each_reason_gets_a_notice(self):

@@ -56,6 +56,16 @@ hermes plugins enable bot-chat-agent
 Desktop / Webapp: **Capacidades → Plugins → Bot Chat Agent** → ponlo en **On** (así se activa la mitad Desktop: tarjeta + panteón). Reinicia la app si no aparece.
 Luego abre **Bots**, elige un bot y chatea. Para probar: `Decisión: usamos PostgreSQL 16 para Aurora` o `Recuerda que prefiero respuestas cortas`, abre una sesión nueva más tarde y pregunta por eso; `/memoria` lista lo guardado (en el menú de comandos elige el comando y pulsa Enter otra vez). Pide algo especializado y Hermes ofrecerá crear el bot adecuado: responde `sí`.
 
+## Idioma
+El plugin responde en **tu** idioma: español, inglés, francés, portugués o alemán, detectado de tu último mensaje (sin red ni modelo) y recordado en la sesión, así que un "ok" o "sí" suelto no lo cambia. Si no sabe, usa inglés. `language: es` (o `en`, `fr`, `pt`, `de`) fuerza uno.
+
+- Lo escribe el plugin, en tu idioma: la tarjeta de estado (etiquetas, "esperando respuesta", "sin avance", el motivo de una delegación detenida), `/memoria`, `/botmemory`, `/pantheon`.
+- Lo escribe tu modelo, al que se le dice el idioma: la línea de oferta del panteón, "X ya está listo", la explicación cuando se detiene una delegación. Un modelo real lo cumple casi siempre; es una instrucción, no una garantía.
+- No traducido: los prompts de rol del `SOUL.md` de los especialistas (inglés / español) y los mensajes de bloqueo de la guardia (inglés / español).
+
+## Cuando Hermes detiene una delegación
+El guardia de bucles de bots de Hermes (`gateway.bot_loop_guard.max_hops`, 4 mensajes por intercambio) rechaza más llamadas `message_agent` en un chat, y también una petición ya enviada o un bot que no necesita respuesta. La tarjeta muestra **detenida** (no *error*) con el motivo y qué hacer, por ejemplo *"este chat llegó al límite de 4 mensajes entre bots… Pídeme que responda directamente o envía un mensaje nuevo para continuar."*, y el resultado de la herramienta lleva una nota para que el coordinador te lo diga en tu idioma sin reintentar. El límite es de Hermes (sube `max_hops` si quieres intercambios más largos).
+
 ## Desactivar / desinstalar
 
 ```bash
@@ -71,7 +81,7 @@ Si queda la parte de Desktop no molesta: no muestra tarjeta y consulta la API au
 
 ## Configuración y privacidad
 
-La configuración (`language: es` para respuestas en español), las reglas de la guardia y las divulgaciones
+La configuración (`language: auto` por defecto: responde en el idioma en que escribes; `es`, `en`, `fr`, `pt`, `de` fuerzan uno), las reglas de la guardia y las divulgaciones
 están detalladas arriba en inglés. En resumen: lee `state.db` **solo en modo lectura** para encontrar los Bot Chat,
 nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no envía telemetría.
 

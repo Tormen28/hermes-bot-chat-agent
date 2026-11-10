@@ -1597,7 +1597,7 @@ def _refusal_notice(tool_name: str, args: Any, result: Any, session_id: str) -> 
     to = _dm_delegations._target_name(args, data) or "that bot"
     note = _status_panel.reason_note(reason, lang, limit)
     data["bot_chat_note"] = (
-        f"[bot-chat-agent] The delegation to {to} was stopped on purpose by Hermes' loop guard "
+        f"[Bot Chat note] The delegation to {to} was stopped on purpose by Hermes' loop guard "
         f"(it is not a failure of {to}). Tell the user, plainly and in {_lang_detect.NAMES[lang]}, in one or "
         f"two sentences, why it stopped and what they can do: {note} Do not retry the same message.")
     return json.dumps(data, ensure_ascii=False)

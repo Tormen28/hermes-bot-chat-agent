@@ -54,7 +54,7 @@ Clean-install run (fresh `HERMES_HOME`, real Hermes webapp, simulated model): go
 | Panteón (automatic, opt-in) | When a request clearly fits a specialty you have no bot for, Hermes adds ONE line ("I can create Daedalus (code) for this, shall I?"). On a plain yes it creates the profile, adds it to `team.assignees` and hands the request over with `message_agent`. Nothing is created without that yes. See [Panteón](#panteón-automatic-optional-generic). |
 | Team | With no `team.assignees`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
 | Desktop | A quiet status bar above the composer (`Working… · <step>`, `Waiting for your OK`, `Waiting on <profile>`, `Done · <summary>`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
-| `/memoria` (alias `/botmemory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. `/memoria` replies in Spanish; `/botmemory` follows the plugin language (English by default). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
+| `/memoria` (alias `/botmemory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. Both reply in the language you are writing in (see *Language* below). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
 | Status panel | A compact, expandable card above the Bot Chat composer (same `COMPOSER_AREAS.top` slot as the Working bar). It shows the active bot and other bots, live delegation lines (`Hermes → Daedalus: waiting for reply` → `done`), elapsed time, a stalled warning, pending asks, memories recalled this turn, the compact token count, and a `/memoria` hint. Toggle with `status_panel.enabled`. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
@@ -79,9 +79,20 @@ Then open **Bots**, pick a bot and chat.
 
 First things to try (works in any language, the model replies in yours):
 
-- Say `Decision: we use PostgreSQL 16 for project Aurora`, or `Remember that I prefer short answers`; open a new session later and ask about it. `/memoria` (Spanish) or `/botmemory` (plugin language) lists what was kept. In the Desktop slash menu, pick the command, then press Enter again to send it.
+- Say `Decision: we use PostgreSQL 16 for project Aurora`, or `Remember that I prefer short answers`; open a new session later and ask about it. `/memoria` or `/botmemory` lists what was kept, in your language. In the Desktop slash menu, pick the command, then press Enter again to send it.
 - Ask for something specialised (code, design, research): Hermes offers one line to create the matching bot; answer `yes` / `sí`.
 Then open **Bots**, pick a bot and chat.
+
+## Language
+The plugin answers in the language **you** write in: Spanish, English, French, Portuguese or German, detected from your latest message (offline, no model call) and remembered for the session, so a short "ok" or "sí" does not flip it. Unknown falls back to English. `language: es` (or `en`, `fr`, `pt`, `de`) forces one language instead.
+
+- Written by the plugin itself, in your language: the status card (labels, "waiting for reply", "stalled", the reason a delegation was stopped), `/memoria`, `/botmemory`, `/pantheon`.
+- Written by your model, told which language to use: the panteón offer line, "X is ready", the explanation when a delegation is stopped. A real model follows this almost always; it is an instruction, not a guarantee.
+- Specialist presets are recognised in Spanish, English, French, Portuguese and German requests, and a plain yes / no (`oui`, `sim`, `ja`, `non`, `não`, `nein`…) answers an offer.
+- Not translated: the role prompts inside the specialists' `SOUL.md` (English / Spanish) and the guard's block messages (English / Spanish).
+
+## When Hermes stops a delegation
+Hermes' bot loop guard (`gateway.bot_loop_guard.max_hops`, 4 messages per exchange by default) refuses further `message_agent` calls in one chat, and also refuses a request that was already sent or a bot that needs no answer. The card then shows **stopped** (not *error*) with the reason and what to do, for example *"this chat reached the limit of 4 bot-to-bot messages, so nothing more was sent. Ask me to answer directly, or send a new message to continue."*, and the tool result carries a note telling the coordinator to say the same to you in your language and not to retry. The limit itself is Hermes' (raise `max_hops` if you want longer exchanges).
 
 ## Disable / uninstall
 
@@ -104,7 +115,7 @@ plugins:
     bot-chat-agent:
       settings:
         bot_chat_title: "Bot Chat"
-        language: en            # en | es
+        language: auto          # auto = follow the language you write in | en | es | fr | pt | de (forces one)
         style: true
         scope: bot_chat         # bot_chat | all  (where the guard runs)
         preset: default         # strict | default | relaxed
