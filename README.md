@@ -36,6 +36,12 @@ Real Hermes Webapp v0.23.1 (built from source) with this plugin, throw-away prof
 |---|---|---|
 | ![Waiting](docs/screenshots/11-real-delegation-waiting.png) | ![Done](docs/screenshots/12-real-delegation-done.png) | ![Memory](docs/screenshots/08-real-memory-session-2.png) |
 
+Clean-install run (fresh `HERMES_HOME`, real Hermes webapp, simulated model): god row · dark card · memory in a new session.
+
+| | | |
+|---|---|---|
+| ![God row](docs/screenshots/20-newuser-god-created.png) | ![Dark card](docs/screenshots/22-newuser-status-card-dark.png) | ![Memory](docs/screenshots/23-newuser-memory-new-session.png) |
+
 ## What it does
 
 | Layer | What changes |
