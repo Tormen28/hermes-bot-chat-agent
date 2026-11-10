@@ -18,7 +18,11 @@ description: >
   the team on). When assignees are configured it assigns kanban cards to those
   profiles and will not close them until the board shows done. The old
   team.gods key still works; if both keys exist and differ the plugin blocks
-  with an explanation instead of guessing. Reads state.db and kanban.db read-only.
+  with an explanation instead of guessing. Also: pending-ask reminders after a
+  mid-turn steer, local short-term / long-term memory (/memoria, no API keys),
+  a live Desktop status card with delegations, and an opt-in panteón: with the
+  Desktop half enabled, Hermes may OFFER (one line) to create a specialist bot
+  and only creates it after your yes. Reads state.db and kanban.db read-only.
 requires_hermes: ">=0.22.5"
 manifest_version: 2
 provides_tools: []
