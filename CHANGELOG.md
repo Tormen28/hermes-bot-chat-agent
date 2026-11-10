@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0-dev (status card) - 2026-11-10
+
+Visible Desktop status card for the Nous hackathon demo, still fail-open and core v0.23 compatible. No publish, no merge to main.
+
+- **User-visible card** in the existing `COMPOSER_AREAS.top` slot (same place as the Working / Waiting bar). Expandable: running tasks with elapsed time, live delegation lines (`Padre → Hefesto: waiting for reply` → `done` / `listo`), the active bot plus other bots and their last activity, pending asks, memories recalled this turn, compact token count, and a `/memoria` hint. A task with no progress past `status_panel.stalled_after_seconds` (default 120) is marked stalled / *sin avance*. Toggle with `status_panel.enabled`.
+- **How the Desktop half gets data on v0.23.** Python hooks write `<HERMES_HOME>/bot-chat-agent/status.json` on each relevant turn and kanban event. `dashboard/plugin_api.py` serves `GET /status` (standard unified-package mount). The Desktop plugin feature-detects `ctx.rest('/status')` and polls every 3s, failing open if the route is missing. No core patch and no `bot-chat-status` event is required.
+- Headless preview: `demo/status_card_harness.html` → `/workspace/hackathon/bot-chat-status-card.png`. Tests: `tests/test_status_panel.py` (writer + snapshot), `tests/test_fase3_desktop.mjs` (card model).
+
 ## 0.3.0-dev (memoria + status) - 2026-11-10
 
 Nous-hackathon follow-up on `feat/bot-chat-generic-memory`. Still local-only, fail-open, core v0.23 compatible. No publish, no merge to main.

@@ -129,11 +129,12 @@ DEFAULTS: dict[str, Any] = {
     "memory": {"enabled": True, "short_term": True, "long_term": True,
                "recent_messages": 8, "summary_budget_tokens": 400,
                "long_term_budget_tokens": 400, "max_entries": 500},
-    # Compact live status line (header in pre_llm_call, and a suffix on
-    # the Desktop bar when the host forwards a bot-chat-status event).
-    # Off with status_panel.enabled: false. Idle turns with nothing to
-    # report add no text (keeps the style budget intact).
-    "status_panel": {"enabled": True},
+    # Compact live status card (header in pre_llm_call, Desktop composer
+    # card that polls <HERMES_HOME>/bot-chat-agent/status.json via the
+    # plugin API). Off with status_panel.enabled: false. A task with no
+    # progress past stalled_after_seconds is marked stalled (default 2 min).
+    # Idle turns with nothing to report add no injected text (style budget).
+    "status_panel": {"enabled": True, "stalled_after_seconds": 120},
     # Fase 3 background work (route A): visible queue per session (plan
     # §6: max 10 open background tasks). The dispatcher of the core
     # runs them; the plugin only coordinates, tracks and delivers.
@@ -803,12 +804,94 @@ def _status_cfg() -> dict[str, Any]:
     raw = _cfg("status_panel")
     if not isinstance(raw, dict):
         raw = {}
-    return {"enabled": bool(raw.get("enabled", True))}
+    try:
+        stalled = int(raw.get("stalled_after_seconds", 120) or 120)
+    except Exception:
+        stalled = 120
+    return {"enabled": bool(raw.get("enabled", True)),
+            "stalled_after_seconds": max(15, stalled)}
+
+
+def _session_bot_name(session_id: str) -> str:
+    """Best available bot/session label; generic 'Bot Chat' is the fallback."""
+    try:
+        sid = (session_id or "").strip()
+        if not sid:
+            return "Bot Chat"
+        db = _state_db()
+        if db and Path(db).is_file():
+            import sqlite3
+            with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+                row = conn.execute(
+                    "SELECT title FROM sessions WHERE id = ? LIMIT 1", (sid,)
+                ).fetchone()
+            title = str(row[0] or "").strip() if row else ""
+            if title and title.lower() not in {"bot chat", "bot-chat"}:
+                return title
+    except Exception:
+        pass
+    return "Bot Chat"
+
+
+def _collect_status_tasks(session_id: str = "") -> list[dict[str, Any]]:
+    try:
+        cs = _context_store()
+        if cs is None:
+            return []
+        if hasattr(cs, "all_background_tasks"):
+            rows = cs.all_background_tasks(limit=50)
+            if rows:
+                return list(rows)
+        if session_id:
+            return list(cs.background_tasks(session_id, limit=50))
+    except Exception:
+        return []
+    return []
+
+
+def _publish_status(session_id: str = "", injected: str = "") -> dict[str, Any]:
+    """Write status.json for the Desktop card. Fail-open, never raises."""
+    try:
+        cfg = _status_cfg()
+        home = _hermes_home()
+        if not cfg["enabled"]:
+            return _status_panel.publish(home=home, enabled=False, lang=_lang())
+        store = _memory_store()
+        recalled = []
+        pending = []
+        if store is not None and session_id:
+            try:
+                recalled = store.load_recall(session_id)
+            except Exception:
+                recalled = []
+            try:
+                pending = store.load_pending(session_id)
+            except Exception:
+                pending = []
+        tasks = _collect_status_tasks(session_id)
+        tokens = 0
+        if injected:
+            try:
+                tokens = context_budget.estimate_tokens(injected)
+            except Exception:
+                tokens = 0
+        return _status_panel.publish(
+            home=home, lang=_lang(), enabled=True,
+            origin=_session_bot_name(session_id or ""),
+            session_id=session_id or "",
+            tasks=tasks, pending=pending, recalled=recalled,
+            context_tokens=tokens,
+            stalled_after_seconds=cfg["stalled_after_seconds"],
+        )
+    except Exception as exc:
+        logger.debug("%s: status publish skipped: %s", PLUGIN_ID, exc)
+        return {}
 
 
 def _status_header(session_id: str, injected: str) -> str:
     """Compact header; empty when disabled or there is nothing to show."""
     try:
+        _publish_status(session_id or "", injected or "")
         if not _status_cfg()["enabled"]:
             return ""
         store = _memory_store()
@@ -1081,6 +1164,7 @@ def _on_post_llm_call(session_id: str = "", turn_id: str = "",
                 cfg=cfg)
     except Exception as exc:
         logger.debug("%s: memory write-back skipped: %s", PLUGIN_ID, exc)
+    _publish_status(session_id or "")
     return None
 
 
@@ -1350,6 +1434,7 @@ def _on_kanban_claimed(task_id: str = "", assignee: str = "", run_id: Any = None
         )
     except Exception as exc:
         logger.warning("%s: claimed note skipped: %s", PLUGIN_ID, exc)
+    _publish_status(str(kw.get('session_id') or kw.get('sessionId') or ''))
     return None
 
 
@@ -1371,6 +1456,7 @@ def _on_kanban_worker_spawned(task_id: str = "", run_id: Any = None, **kw: Any) 
         )
     except Exception as exc:
         logger.warning("%s: spawned note skipped: %s", PLUGIN_ID, exc)
+    _publish_status(str(kw.get('session_id') or kw.get('sessionId') or ''))
     return None
 
 
@@ -1395,6 +1481,7 @@ def _on_kanban_completed(task_id: str = "", assignee: str = "", summary: str = "
         _relay_pending()
     except Exception as exc:
         logger.warning("%s: delivery note skipped: %s", PLUGIN_ID, exc)
+    _publish_status(str(kw.get('session_id') or kw.get('sessionId') or ''))
     return None
 
 
@@ -1420,6 +1507,7 @@ def _on_kanban_blocked(task_id: str = "", assignee: str = "", reason: str = "", 
         _relay_pending()
     except Exception as exc:
         logger.warning("%s: blocked note skipped: %s", PLUGIN_ID, exc)
+    _publish_status(str(kw.get('session_id') or kw.get('sessionId') or ''))
     return None
 
 

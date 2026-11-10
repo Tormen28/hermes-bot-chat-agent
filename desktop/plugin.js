@@ -24,7 +24,19 @@ const I18N = {
     readyOne: '1 result ready',
     readyMany: '{n} results ready',
     readyElsewhereOne: '1 result ready in Bot Chat',
-    readyElsewhereMany: '{n} results ready in Bot Chat'
+    readyElsewhereMany: '{n} results ready in Bot Chat',
+    active: 'Active',
+    others: 'Also',
+    delegations: 'Delegations',
+    pending: 'Pending',
+    recalled: 'Recalled',
+    stalled: 'stalled',
+    waitingReply: 'waiting for reply',
+    workingState: 'working',
+    doneState: 'done',
+    hint: 'Type /memoria to review memory',
+    showMore: 'Show status',
+    hideMore: 'Hide status'
   },
   es: {
     working: 'Cargando…',
@@ -38,7 +50,19 @@ const I18N = {
     readyOne: '1 resultado listo',
     readyMany: '{n} resultados listos',
     readyElsewhereOne: '1 resultado listo en Bot Chat',
-    readyElsewhereMany: '{n} resultados listos en Bot Chat'
+    readyElsewhereMany: '{n} resultados listos en Bot Chat',
+    active: 'Activo',
+    others: 'También',
+    delegations: 'Delegaciones',
+    pending: 'Pendientes',
+    recalled: 'Recordadas',
+    stalled: 'sin avance',
+    waitingReply: 'esperando respuesta',
+    workingState: 'trabajando',
+    doneState: 'listo',
+    hint: 'Escribe /memoria para ver la memoria',
+    showMore: 'Ver estado',
+    hideMore: 'Ocultar estado'
   }
 }
 const TOOL_LABELS = {
@@ -251,7 +275,119 @@ export function applyTeamEvent(state, name, payload) {
   return null
 }
 
+const DELEGATION_STATE = {
+  en: {
+    received: 'waiting for reply', queued: 'waiting for reply', waiting: 'waiting for reply',
+    working: 'working', blocked: 'blocked', ready: 'done', error: 'error', cancelled: 'cancelled'
+  },
+  es: {
+    received: 'esperando respuesta', queued: 'esperando respuesta', waiting: 'esperando respuesta',
+    working: 'trabajando', blocked: 'bloqueado', ready: 'listo', error: 'error', cancelled: 'cancelado'
+  }
+}
+const OPEN_STATUSES = { received: 1, queued: 1, working: 1, waiting: 1, blocked: 1 }
+
+export function formatElapsed(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (total < 60) return `${total}s`
+  const minutes = Math.floor(total / 60)
+  const secs = total % 60
+  if (minutes < 60) return `${minutes}m ${secs}s`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+export function delegationLine(item, lang) {
+  const row = item && typeof item === 'object' ? item : {}
+  const src = String(row.from || row.origin || 'Bot Chat').trim() || 'Bot Chat'
+  const dst = String(row.to || row.assignee || '').trim()
+  if (!dst) return ''
+  const l = lang === 'es' ? 'es' : 'en'
+  const key = String(row.state || row.status || 'waiting')
+  const state = (DELEGATION_STATE[l] && DELEGATION_STATE[l][key]) || DELEGATION_STATE[l].waiting
+  let line = `${src} → ${dst}: ${state}`
+  if (row.stalled) line += l === 'es' ? ' · sin avance' : ' · stalled'
+  return line
+}
+
+export function normalizeSnapshot(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {}
+  const bots = Array.isArray(src.bots) ? src.bots.filter(b => b && typeof b === 'object') : []
+  const delegations = Array.isArray(src.delegations) ? src.delegations.filter(d => d && typeof d === 'object') : []
+  const tasks = Array.isArray(src.tasks) ? src.tasks.filter(t => t && typeof t === 'object') : []
+  const pending = Array.isArray(src.pending) ? src.pending.map(p => String(p || '').trim()).filter(Boolean) : []
+  const recalled = Array.isArray(src.recalled) ? src.recalled.filter(r => r && typeof r === 'object') : []
+  const active = (src.active_bot && typeof src.active_bot === 'object')
+    ? src.active_bot
+    : (bots.find(b => b.role === 'active') || null)
+  return {
+    enabled: src.enabled !== false,
+    lang: src.lang === 'es' ? 'es' : 'en',
+    session_id: String(src.session_id || ''),
+    origin: String(src.origin || (active && active.name) || ''),
+    active_bot: active,
+    bots,
+    delegations,
+    tasks,
+    pending,
+    recalled,
+    context_tokens: Math.max(0, Math.floor(Number(src.context_tokens) || 0)),
+    stalled_after_seconds: Math.max(15, Math.floor(Number(src.stalled_after_seconds) || 120)),
+    hint: String(src.hint || '')
+  }
+}
+
+export function cardHasContent(snap) {
+  const s = normalizeSnapshot(snap)
+  if (!s.enabled) return false
+  return Boolean(
+    (s.active_bot && s.active_bot.name) ||
+    s.delegations.length || s.tasks.length || s.pending.length ||
+    s.recalled.length || s.context_tokens > 0 ||
+    s.bots.some(b => b && b.name)
+  )
+}
+
+export function buildCardModel(raw, lang) {
+  const s = normalizeSnapshot(raw)
+  const l = lang === 'es' ? 'es' : (s.lang || 'en')
+  const t = I18N[l]
+  if (!s.enabled) {
+    return { visible: false, lang: l, labels: t, activeBot: null, others: [],
+      delegations: [], pending: [], recalled: [], tokens: 0, hint: '', hasStalled: false, summary: '' }
+  }
+  const activeBot = s.active_bot || null
+  const others = s.bots.filter(b => b && b.name && (!activeBot || b.name !== activeBot.name))
+  const delegations = s.delegations.map(d => {
+    const text = delegationLine(d, l)
+    const elapsed = formatElapsed(d.elapsed_seconds)
+    return { text, elapsed, stalled: Boolean(d.stalled), title: String(d.title || '') }
+  }).filter(d => d.text)
+  const pending = s.pending.slice(0, 3)
+  const recalled = s.recalled.map(r => String(r.title || r.text || '').trim()).filter(Boolean).slice(0, 3)
+  const hasStalled = delegations.some(d => d.stalled) || s.tasks.some(task => task && task.stalled)
+  const bits = []
+  if (activeBot && activeBot.name) bits.push(activeBot.name)
+  if (delegations[0]) bits.push(delegations[0].text)
+  if (hasStalled) bits.push(t.stalled)
+  if (s.context_tokens > 0) bits.push(`${s.context_tokens} tok`)
+  return {
+    visible: cardHasContent(s),
+    lang: l,
+    labels: t,
+    activeBot,
+    others,
+    delegations,
+    pending,
+    recalled,
+    tokens: s.context_tokens,
+    hint: s.hint || t.hint,
+    hasStalled,
+    summary: bits.join(' · ')
+  }
+}
+
 export function canonicalIdsFrom(res, title = BOT_CHAT_TITLE) {
+
   const ids = new Set()
   const rows = Array.isArray(res && res.profiles) ? res.profiles : []
   for (const row of rows) {
@@ -266,6 +402,9 @@ export function canonicalIdsFrom(res, title = BOT_CHAT_TITLE) {
 }
 
 const $bar = atom({ active: false, phase: 'idle', blocked: false, text: '' })
+const $panel = atom({ enabled: false })
+const $open = atom(true)
+
 
 const DOT_COLOR = {
   working: '#38bdf8',
@@ -275,7 +414,8 @@ const DOT_COLOR = {
   ready: '#34d399',
   card_blocked: '#f59e0b',
   done: '#34d399',
-  error: '#f87171'
+  error: '#f87171',
+  panel: '#38bdf8'
 }
 
 const BAR_STYLE = {
@@ -286,18 +426,98 @@ const BAR_STYLE = {
   border: '1px solid var(--ui-stroke-tertiary, rgba(148,163,184,.18))'
 }
 
+const CARD_STYLE = {
+  display: 'flex', flexDirection: 'column', gap: '6px',
+  padding: '8px 12px 10px', margin: '0 8px 6px',
+  borderRadius: '8px', fontSize: '12px', lineHeight: 1.4,
+  color: 'var(--ui-text-secondary, #cbd5e1)',
+  background: 'var(--ui-surface-secondary, rgba(30,41,59,.65))',
+  border: '1px solid var(--ui-stroke-tertiary, rgba(148,163,184,.18))'
+}
+const MUTED = { color: 'var(--ui-text-tertiary, #94a3b8)', fontSize: '11px' }
+const ROW = { display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 }
+const PILL = {
+  display: 'inline-flex', alignItems: 'center', gap: '4px',
+  padding: '1px 6px', borderRadius: '9999px', fontSize: '10px',
+  background: 'rgba(56,189,248,.12)', color: 'var(--ui-text-secondary, #cbd5e1)'
+}
+const WARN = { color: 'var(--ui-warning, #f59e0b)', fontSize: '11px' }
+
+function lineRow(text, extra, warn) {
+  return jsxs('div', { style: ROW, children: [
+    jsx('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, children: text }),
+    extra ? jsx('span', { style: warn ? WARN : MUTED, children: extra }) : null
+  ] })
+}
+
 function StatusBar() {
   const s = useValue($bar)
-  if (!s.active) return null
-  const dot = DOT_COLOR[s.phase] || DOT_COLOR.working
-  return jsxs('div', {
-    role: 'status', 'aria-live': 'polite', style: BAR_STYLE,
+  const panel = useValue($panel)
+  const open = useValue($open)
+  const lang = pickLang()
+  const model = buildCardModel(panel, lang)
+  if (!s.active && !model.visible) return null
+  const dot = DOT_COLOR[s.phase] || (model.hasStalled ? DOT_COLOR.waiting_ok : DOT_COLOR.panel)
+  const headline = s.active && s.text ? s.text : (model.summary || model.labels.showMore)
+  const canOpen = model.visible
+  const header = jsxs('div', {
+    role: 'status', 'aria-live': 'polite',
+    style: Object.assign({}, BAR_STYLE, { margin: 0, background: 'transparent', border: 'none', padding: 0, cursor: canOpen ? 'pointer' : 'default' }),
+    onClick: canOpen ? () => $open.set(!$open.get()) : undefined,
     children: [
       jsx('span', { style: { width: 8, height: 8, borderRadius: 9999, flexShrink: 0,
         background: dot, opacity: s.phase === 'working' ? 0.85 : 1 } }),
-      jsx('span', { children: s.text })
+      jsx('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: headline }),
+      canOpen ? jsx('span', { style: MUTED, children: open ? '▾' : '▸' }) : null
     ]
   })
+  if (!canOpen || !open) {
+    return jsx('div', { style: BAR_STYLE, children: header })
+  }
+  const kids = [header]
+  if (model.activeBot && model.activeBot.name) {
+    kids.push(jsxs('div', { style: ROW, children: [
+      jsx('span', { style: PILL, children: model.labels.active }),
+      jsx('strong', { style: { fontWeight: 600, color: 'var(--ui-text-primary, #e2e8f0)' }, children: model.activeBot.name }),
+      jsx('span', { style: MUTED, children: model.activeBot.state || '' })
+    ] }))
+  }
+  for (const d of model.delegations) {
+    const extra = [d.elapsed, d.stalled ? model.labels.stalled : ''].filter(Boolean).join(' · ')
+    kids.push(lineRow(d.text, extra, d.stalled))
+  }
+  for (const bot of model.others) {
+    const state = bot.state || ''
+    const extra = [formatElapsed(bot.elapsed_seconds), bot.stalled ? model.labels.stalled : bot.last_activity].filter(Boolean).join(' · ')
+    kids.push(lineRow(`${model.labels.others}: ${bot.name}${state ? ' · ' + state : ''}`, extra, Boolean(bot.stalled)))
+  }
+  if (model.pending.length) {
+    kids.push(jsx('div', { style: MUTED, children: `${model.labels.pending}: ${model.pending.join(' · ')}` }))
+  }
+  if (model.recalled.length) {
+    kids.push(jsx('div', { style: MUTED, children: `${model.labels.recalled}: ${model.recalled.join(' · ')}` }))
+  }
+  const foot = []
+  if (model.tokens > 0) foot.push(jsx('span', { key: 'tok', style: MUTED, children: `${model.tokens} tok` }))
+  if (model.hint) {
+    const composer = host && host.composer && typeof host.composer.insertText === 'function'
+    foot.push(jsx(composer ? 'button' : 'span', {
+      key: 'hint',
+      type: composer ? 'button' : undefined,
+      style: Object.assign({}, MUTED, composer ? { cursor: 'pointer', background: 'none', border: 'none', padding: 0, color: 'var(--ui-accent, #38bdf8)' } : {}),
+      onClick: composer ? (ev) => {
+        if (ev && ev.stopPropagation) ev.stopPropagation()
+        const sid = (host.state && host.state.focusedStoredSessionId && host.state.focusedStoredSessionId.get && host.state.focusedStoredSessionId.get()) || null
+        try {
+          const ret = host.composer.insertText(sid, '/memoria', { mode: 'prefix' })
+          if (ret && typeof ret.catch === 'function') ret.catch(() => {})
+        } catch (_) {}
+      } : undefined,
+      children: model.hint
+    }))
+  }
+  if (foot.length) kids.push(jsxs('div', { style: Object.assign({}, ROW, { marginTop: 2 }), children: foot }))
+  return jsxs('div', { style: CARD_STYLE, children: kids })
 }
 
 function setup(ctx) {
@@ -387,6 +607,24 @@ function setup(ctx) {
 
   ctx.register({ id: 'bot-chat-agent-status', area: COMPOSER_AREAS.top, order: 5,
     render: () => jsx(StatusBar, {}) })
+
+  let stopPoll = () => {}
+  if (ctx && typeof ctx.rest === 'function') {
+    const tick = () => {
+      Promise.resolve(ctx.rest('/status', { timeoutMs: 2000 })).then((raw) => {
+        if (disposed) return
+        $panel.set(normalizeSnapshot(raw))
+        render()
+      }).catch(() => { /* fail-open: keep the last snapshot */ })
+    }
+    tick()
+    if (typeof ctx.setInterval === 'function') {
+      stopPoll = ctx.setInterval(tick, 3000) || (() => {})
+    } else {
+      const id = setInterval(tick, 3000)
+      stopPoll = () => clearInterval(id)
+    }
+  }
 
   const unsubs = []
   const busyAtom = state.busy || state.awaitingResponse
@@ -491,9 +729,11 @@ function setup(ctx) {
 
   ctx.onDispose(() => {
     disposed = true
+    try { stopPoll() } catch (_) {}
     for (const u of unsubs) if (typeof u === 'function') u()
     applyReasoning(false)
     $bar.set({ active: false, phase: 'idle', blocked: false, text: '' })
+    $panel.set({ enabled: false })
   })
 }
 

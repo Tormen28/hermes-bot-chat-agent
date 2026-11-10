@@ -33,7 +33,7 @@ If you want every detail, open a normal session: it stays exactly as it was.
 | Team | With no `team.assignees`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
 | Desktop | A quiet status bar above the composer (`Working… · <step>`, `Waiting for your OK`, `Waiting on <profile>`, `Done · <summary>`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
 | `/memoria` (alias `/memory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. `/memoria` replies in Spanish; `/memory` follows the plugin language (English by default). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
-| Status panel | A compact `[Status]` header in the turn context when there is something to show: running background tasks, pending asks, memories recalled this turn, and the compact token count. The Desktop bar can show the same line as a suffix. Toggle with `status_panel.enabled`. |
+| Status panel | A compact, expandable card above the Bot Chat composer (same `COMPOSER_AREAS.top` slot as the Working bar). It shows the active bot and other bots, live delegation lines (`Padre → Hefesto: waiting for reply` → `done` / `listo`), elapsed time, a stalled warning, pending asks, memories recalled this turn, the compact token count, and a `/memoria` hint. Toggle with `status_panel.enabled`. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
 The safety guard also protects `delegate_task` / subagent child sessions spawned from a Bot Chat (inheriting parent Bot Chat protection), while normal sessions and subagents of normal sessions behave exactly as before.
@@ -119,7 +119,8 @@ plugins:
           long_term_budget_tokens: 400
           max_entries: 500     # prune oldest when the store grows past this
         status_panel:
-          enabled: true        # compact [Status] header; false hides it
+          enabled: true        # Desktop card + compact [Status] header; false hides both
+          stalled_after_seconds: 120  # warn when a running task makes no progress
 ```
 Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also treated as an outbound send.
 
@@ -129,7 +130,9 @@ Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also
 
 **`/memoria` and `/memory`.** In a Bot Chat session type `/memoria` (Spanish labels) or `/memory` (English by default) to see the long-term store, the rolling summary and any pending asks. Each long-term row has an 8-character id: `/memory forget ab12cd34` drops one entry, `/memory edit ab12cd34 New text` corrects it, `/memory clear` asks for confirmation and `/memory clear confirm` erases every long-term row. Nothing is changed if the id is unknown or the store cannot be opened.
 
-**Status panel.** When a turn recalls memories, has pending asks or has running background tasks, `pre_llm_call` prepends a one-line `[Status]` header (recalled titles, pending count, task state, compact token count). Turns with nothing to report stay unchanged. Switch it off with `status_panel.enabled: false`. On Desktop the same text can appear as a suffix on the existing status bar when the host forwards a `bot-chat-status` event. A headless walkthrough is `demo/hackathon_demo.py`.
+**Status panel.** The Desktop UI shows an expandable card above the Bot Chat composer (the same `COMPOSER_AREAS.top` slot as the Working / Waiting bar). It lists the active bot and the other bots on the board with their last activity, live delegation lines (`Padre → Hefesto: waiting for reply`, then `done` / `listo` when the result arrives), elapsed time on running tasks, a stalled warning when a task makes no progress past `status_panel.stalled_after_seconds` (default 2 minutes), pending asks, memories recalled this turn, the compact token count, and a hint to type `/memoria`. Idle sessions stay quiet. Switch it off with `status_panel.enabled: false`.
+
+Python hooks publish the same state to `<HERMES_HOME>/bot-chat-agent/status.json`. The Desktop half feature-detects `ctx.rest('/status')` (served by `dashboard/plugin_api.py`) and polls it; if that route is not mounted on a given gateway, the card still renders from the last snapshot and never breaks the rest of the plugin. The model-facing `[Status]` header in `pre_llm_call` is unchanged. Preview: `docs/screenshots/04-status-card.png`. A headless walkthrough is `demo/hackathon_demo.py`.
 
 
 ### Guard presets

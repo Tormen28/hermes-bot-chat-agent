@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Bot Chat — status card</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #111827;
+    --surface: rgba(30, 41, 59, .72);
+    --stroke: rgba(148, 163, 184, .18);
+    --text: #e2e8f0;
+    --secondary: #cbd5e1;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --ok: #34d399;
+    --warn: #f59e0b;
+    --user: #1e293b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", Inter, sans-serif;
+  }
+  .app {
+    width: 860px; min-height: 760px;
+    margin: 0 auto; padding: 20px 22px 24px;
+    background:
+      radial-gradient(1200px 400px at 10% -10%, rgba(56,189,248,.08), transparent 50%),
+      linear-gradient(180deg, #0f172a, var(--bg));
+  }
+  .topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 4px 16px;
+    border-bottom: 1px solid var(--stroke);
+    margin-bottom: 16px;
+  }
+  .mark {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+  }
+  .topbar h1 { font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .topbar span { color: var(--muted); font-size: 12px; }
+  .thread { display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 18px; min-height: 220px; }
+  .bubble { max-width: 78%; padding: 10px 12px; border-radius: 12px; }
+  .user { align-self: flex-end; background: var(--user); border: 1px solid var(--stroke); color: var(--secondary); }
+  .bot { align-self: flex-start; color: var(--secondary); }
+  .who { display: block; font-size: 10px; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 4px; }
+  .composer {
+    background: var(--panel);
+    border: 1px solid var(--stroke);
+    border-radius: 16px;
+    padding: 10px 10px 12px;
+    box-shadow: 0 18px 40px rgba(0,0,0,.28);
+  }
+  .card {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px 12px 10px;
+    margin: 0 4px 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--secondary);
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+  }
+  .head { display: flex; align-items: center; gap: 8px; padding: 0; margin: 0; }
+  .dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--accent); flex-shrink: 0; }
+  .head strong { flex: 1; font-weight: 500; }
+  .chev { color: var(--muted); font-size: 11px; }
+  .row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .row .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .muted { color: var(--muted); font-size: 11px; }
+  .warn { color: var(--warn); font-size: 11px; }
+  .pill {
+    display: inline-flex; align-items: center;
+    padding: 1px 6px; border-radius: 9999px; font-size: 10px;
+    background: rgba(56,189,248,.12); color: var(--secondary);
+  }
+  .name { font-weight: 600; color: var(--text); }
+  .ok { color: var(--ok); }
+  .input {
+    display: flex; align-items: center; gap: 8px;
+    margin: 4px 4px 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #0b1220;
+    border: 1px solid var(--stroke);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .send { margin-left: auto; width: 22px; height: 22px; border-radius: 9999px; background: rgba(56,189,248,.2); }
+  .hint-link { color: var(--accent); }
+  .caption { margin: 14px 8px 0; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="mark"></div>
+      <h1>Bot Chat</h1>
+      <span>Padre · varios bots en el tablero</span>
+    </div>
+    <div class="thread">
+      <div class="bubble user">Recuérdame dónde viven las notas largas, y deja que Hefesto siga con la autenticación del editor de video. Atenea, ¿puedes revisar la arena?</div>
+      <div class="bubble bot"><span class="who">Padre</span>Voy a coordinarlo. Las notas largas viven en el almacén local del plugin. Atenea ya revisó la arena; Hefesto sigue con el editor.</div>
+    </div>
+    <div class="composer">
+      <div class="card" role="status" aria-live="polite">
+        <div class="head">
+          <span class="dot"></span>
+          <strong>Cargando… · Coordinando un ayudante</strong>
+          <span class="chev">▾</span>
+        </div>
+        <div class="row">
+          <span class="pill">Activo</span>
+          <span class="name">Padre</span>
+          <span class="muted">trabajando</span>
+        </div>
+        <div class="row">
+          <span class="grow">Padre → Hefesto: esperando respuesta</span>
+          <span class="muted">1m 12s</span>
+        </div>
+        <div class="row">
+          <span class="grow">Padre → Atenea: listo</span>
+          <span class="muted ok">48s</span>
+        </div>
+        <div class="row">
+          <span class="grow">Padre → Cronos: trabajando · sin avance</span>
+          <span class="warn">3m 40s · sin avance</span>
+        </div>
+        <div class="row">
+          <span class="grow">También: Hefesto · trabajando</span>
+          <span class="muted">video editor auth · 1m 12s</span>
+        </div>
+        <div class="row">
+          <span class="grow">También: Atenea · listo</span>
+          <span class="muted">revisión de la arena</span>
+        </div>
+        <div class="row">
+          <span class="grow">También: Cronos · trabajando</span>
+          <span class="warn">sin avance</span>
+        </div>
+        <div class="muted">Pendientes: revisa bien como esta la arena ahora por favor</div>
+        <div class="muted">Recordadas: use token auth for the video editor · store long-term notes in the plugin local store</div>
+        <div class="row" style="margin-top:2px">
+          <span class="muted">336 tok</span>
+          <span class="muted hint-link">Escribe /memoria para ver la memoria</span>
+        </div>
+      </div>
+      <div class="input">Escribe un mensaje… <span class="send"></span></div>
+    </div>
+    <div class="caption">Bot Chat Agent · panel de estado en vivo · demo para el hackathon de Nous</div>
+  </div>
+</body>
+</html>

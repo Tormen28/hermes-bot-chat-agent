@@ -1188,6 +1188,32 @@ class DeliveryStore:
 
         return self._read(_do)
 
+    def all_background_tasks(self, statuses: Any = (),
+                             limit: int = 200) -> list[dict[str, Any]]:
+        """Recent background tasks across sessions (newest update first)."""
+        wanted = tuple(str(s) for s in (statuses or ()))
+
+        def _do(conn):
+            if conn is None:
+                return []
+            cap = max(1, int(limit))
+            if wanted:
+                marks = ",".join("?" for _ in wanted)
+                rows = conn.execute(
+                    f"SELECT * FROM background_tasks WHERE status IN ({marks}) "
+                    f"ORDER BY updated_at DESC, task_id LIMIT ?",
+                    (*wanted, cap),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM background_tasks "
+                    "ORDER BY updated_at DESC, task_id LIMIT ?",
+                    (cap,),
+                ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+
+        return self._read(_do)
+
     def open_background_count(self, session_id: str) -> int:
         """Open background tasks of a session (received/queued/working/blocked)."""
         return len(self.background_tasks(session_id, BG_OPEN_STATUSES, limit=10000))

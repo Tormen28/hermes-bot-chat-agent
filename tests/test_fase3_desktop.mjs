@@ -136,3 +136,64 @@ test('applyTeamEvent records a bot-chat-status panel line', () => {
   })
   assert.match(s.panel, /2 recalled/)
 })
+
+const { formatElapsed, delegationLine, normalizeSnapshot, cardHasContent, buildCardModel } = plugin
+
+test('formatElapsed and delegation lines are compact and bilingual', () => {
+  assert.equal(formatElapsed(45), '45s')
+  assert.equal(formatElapsed(132), '2m 12s')
+  assert.equal(delegationLine({ from: 'Padre', to: 'Hefesto', state: 'waiting' }, 'en'),
+    'Padre → Hefesto: waiting for reply')
+  assert.equal(delegationLine({ from: 'Padre', to: 'Hefesto', state: 'waiting' }, 'es'),
+    'Padre → Hefesto: esperando respuesta')
+  assert.equal(delegationLine({ from: 'Padre', to: 'Hermes', state: 'ready' }, 'es'),
+    'Padre → Hermes: listo')
+  assert.match(delegationLine({ from: 'Padre', to: 'Hefesto', state: 'working', stalled: true }, 'en'), /stalled/)
+  assert.match(delegationLine({ from: 'Padre', to: 'Hefesto', state: 'working', stalled: true }, 'es'), /sin avance/)
+})
+
+test('normalizeSnapshot and card model hide when disabled or empty', () => {
+  assert.equal(cardHasContent({ enabled: false, delegations: [{ from: 'A', to: 'B' }] }), false)
+  assert.equal(cardHasContent({}), false)
+  assert.deepEqual(normalizeSnapshot(null).delegations, [])
+  assert.equal(normalizeSnapshot('nope').enabled, true)
+  const model = buildCardModel({
+    enabled: true,
+    lang: 'es',
+    active_bot: { name: 'Padre', state: 'working' },
+    bots: [
+      { name: 'Padre', role: 'active', state: 'working' },
+      { name: 'Hefesto', state: 'working', last_activity: 'video editor auth', elapsed_seconds: 72 }
+    ],
+    delegations: [
+      { from: 'Padre', to: 'Hefesto', state: 'waiting', elapsed_seconds: 72, title: 'video editor auth' },
+      { from: 'Padre', to: 'Hermes', state: 'ready', elapsed_seconds: 20, title: 'arena' }
+    ],
+    pending: ['revisa bien como esta la arena ahora por favor'],
+    recalled: [{ title: 'Use token auth for the video editor service.' }],
+    context_tokens: 336,
+    hint: '/memoria'
+  }, 'es')
+  assert.equal(model.visible, true)
+  assert.equal(model.activeBot.name, 'Padre')
+  assert.equal(model.others[0].name, 'Hefesto')
+  assert.match(model.delegations[0].text, /esperando respuesta/)
+  assert.equal(model.delegations[1].text, 'Padre → Hermes: listo')
+  assert.equal(model.delegations[0].elapsed, '1m 12s')
+  assert.equal(model.tokens, 336)
+  assert.equal(model.pending.length, 1)
+  assert.match(model.recalled[0], /token auth/i)
+  assert.match(model.summary, /Padre/)
+})
+
+test('stalled delegation is flagged in the card model', () => {
+  const model = buildCardModel({
+    enabled: true,
+    delegations: [
+      { from: 'Padre', to: 'Hefesto', state: 'working', elapsed_seconds: 220, stalled: true }
+    ]
+  }, 'en')
+  assert.equal(model.hasStalled, true)
+  assert.match(model.delegations[0].text, /stalled/)
+  assert.match(model.summary, /stalled/)
+})

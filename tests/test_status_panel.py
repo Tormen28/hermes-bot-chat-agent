@@ -103,3 +103,103 @@ class TestStatusPanelHook(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestStatusSnapshot(unittest.TestCase):
+    def setUp(self):
+        import status_panel as sp
+        self.sp = sp
+        self.now = 1_000_000.0
+
+    def test_write_and_read_roundtrip(self):
+        home = Path(tempfile.mkdtemp(prefix="bca-status-file-"))
+        path = home / "bot-chat-agent" / "status.json"
+        payload = self.sp.snapshot(
+            lang="es",
+            origin="Padre",
+            session_id="bot",
+            tasks=[{
+                "task_id": "t-1", "title": "video editor auth",
+                "status": "working", "assignee": "Hefesto",
+                "created_at": self.now - 72, "updated_at": self.now - 10,
+            }],
+            pending=["revisa bien como esta la arena ahora por favor"],
+            recalled=[{"title": "Use token auth for the video editor service."}],
+            context_tokens=336,
+            now=self.now,
+            stalled_after_seconds=120,
+        )
+        self.assertTrue(self.sp.write_snapshot(path, payload))
+        got = self.sp.read_snapshot(path)
+        self.assertEqual(got["enabled"], True)
+        self.assertEqual(got["lang"], "es")
+        self.assertEqual(got["active_bot"]["name"], "Padre")
+        self.assertTrue(any(b["name"] == "Hefesto" for b in got["bots"]))
+        self.assertEqual(len(got["delegations"]), 1)
+        self.assertEqual(got["delegations"][0]["from"], "Padre")
+        self.assertEqual(got["delegations"][0]["to"], "Hefesto")
+        self.assertEqual(got["delegations"][0]["elapsed_seconds"], 72)
+        self.assertFalse(got["delegations"][0]["stalled"])
+
+    def test_read_missing_or_corrupt_is_fail_open(self):
+        home = Path(tempfile.mkdtemp(prefix="bca-status-bad-"))
+        missing = home / "nope" / "status.json"
+        self.assertEqual(self.sp.read_snapshot(missing), {})
+        bad = home / "status.json"
+        bad.write_text("{not-json", encoding="utf-8")
+        self.assertEqual(self.sp.read_snapshot(bad), {})
+        self.assertFalse(self.sp.write_snapshot(Path("/proc/this-cannot-be-written/status.json"), {"enabled": True}))
+
+    def test_delegation_lines_bilingual_and_done(self):
+        waiting = {"from": "Padre", "to": "Hefesto", "state": "waiting", "elapsed_seconds": 40, "stalled": False}
+        done = {"from": "Padre", "to": "Hermes", "state": "ready", "elapsed_seconds": 20, "stalled": False}
+        stalled = {"from": "Padre", "to": "Hefesto", "state": "working", "elapsed_seconds": 200, "stalled": True}
+        self.assertEqual(self.sp.delegation_line(waiting, "en"), "Padre → Hefesto: waiting for reply")
+        self.assertEqual(self.sp.delegation_line(waiting, "es"), "Padre → Hefesto: esperando respuesta")
+        self.assertEqual(self.sp.delegation_line(done, "en"), "Padre → Hermes: done")
+        self.assertEqual(self.sp.delegation_line(done, "es"), "Padre → Hermes: listo")
+        self.assertIn("stalled", self.sp.delegation_line(stalled, "en").lower())
+        self.assertIn("sin avance", self.sp.delegation_line(stalled, "es").lower())
+
+    def test_elapsed_and_stalled_threshold(self):
+        self.assertEqual(self.sp.elapsed_seconds(self.now - 45, now=self.now), 45)
+        self.assertEqual(self.sp.format_elapsed(45, "en"), "45s")
+        self.assertEqual(self.sp.format_elapsed(132, "es"), "2m 12s")
+        self.assertFalse(self.sp.is_stalled(self.now - 119, now=self.now, threshold=120, status="working"))
+        self.assertTrue(self.sp.is_stalled(self.now - 121, now=self.now, threshold=120, status="working"))
+        self.assertFalse(self.sp.is_stalled(self.now - 400, now=self.now, threshold=120, status="ready"))
+
+    def test_disabled_snapshot_is_flagged_off(self):
+        snap = self.sp.snapshot(enabled=False, origin="Padre", tasks=[{"status": "working", "assignee": "Hefesto"}])
+        self.assertEqual(snap["enabled"], False)
+        self.assertEqual(snap.get("delegations") or [], [])
+
+
+class TestStatusWriterHook(Base):
+    def setUp(self):
+        super().setUp()
+        self.home = Path(tempfile.mkdtemp(prefix="bca-status-hook-"))
+        os.environ["HERMES_HOME"] = str(self.home)
+
+    def test_pre_llm_writes_status_json(self):
+        import bot_chat_memory as mem
+        import status_panel as sp
+        store = mem.MemoryStore(self.home / "bot-chat-agent" / "memory.db")
+        store.upsert("decision", "Use token auth for the video editor service.",
+                     keywords=("token", "video", "editor"))
+        history = [{"role": "user", "content": "what auth does the video editor use?"}]
+        self.ctx.hooks["pre_llm_call"](
+            session_id="bot", turn_id="t1", conversation_history=history)
+        path = self.home / "bot-chat-agent" / "status.json"
+        self.assertTrue(path.is_file(), "Python hook must publish status.json for the Desktop card")
+        snap = sp.read_snapshot(path)
+        self.assertTrue(snap.get("enabled"))
+        titles = " ".join(str(r.get("title") or "") for r in snap.get("recalled") or [])
+        self.assertIn("token auth", titles.lower())
+        self.assertGreater(int(snap.get("context_tokens") or 0), 0)
+
+    def test_panel_off_writes_disabled_flag(self):
+        import status_panel as sp
+        self.ctx.cfg["status_panel"] = {"enabled": False}
+        self.ctx.hooks["pre_llm_call"](session_id="bot", turn_id="t0")
+        snap = sp.read_snapshot(self.home / "bot-chat-agent" / "status.json")
+        self.assertEqual(snap.get("enabled"), False)
