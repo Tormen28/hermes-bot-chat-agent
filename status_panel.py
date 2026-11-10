@@ -13,7 +13,17 @@ _HEAD = {"en": "[Status]", "es": "[Estado]"}
 
 
 def _lang(lang: str) -> str:
+    """Model-facing text exists in es / en only."""
     return "es" if str(lang or "").lower().startswith("es") else "en"
+
+
+_USER_LANGS = ("en", "es", "fr", "pt", "de")
+
+
+def _ulang(lang: str) -> str:
+    """Card text (what the user reads) exists in en / es / fr / pt / de."""
+    code = str(lang or "").lower()[:2]
+    return code if code in _USER_LANGS else "en"
 
 
 def _task_bit(task: dict[str, Any], lang: str) -> str:
@@ -111,7 +121,23 @@ _DELEGATION_STATE = {
         "error": "error",
         "cancelled": "cancelado",
     },
+    "fr": {
+        "received": "en attente de réponse", "queued": "en attente de réponse",
+        "waiting": "en attente de réponse", "blocked": "bloqué", "working": "en cours",
+        "ready": "terminé", "error": "erreur", "cancelled": "annulé",
+    },
+    "pt": {
+        "received": "aguardando resposta", "queued": "aguardando resposta",
+        "waiting": "aguardando resposta", "blocked": "bloqueado", "working": "trabalhando",
+        "ready": "pronto", "error": "erro", "cancelled": "cancelado",
+    },
+    "de": {
+        "received": "wartet auf Antwort", "queued": "wartet auf Antwort",
+        "waiting": "wartet auf Antwort", "blocked": "blockiert", "working": "arbeitet",
+        "ready": "fertig", "error": "Fehler", "cancelled": "abgebrochen",
+    },
 }
+_STALLED = {"en": "stalled", "es": "sin avance", "fr": "sans progrès", "pt": "sem progresso", "de": "keine Fortschritte"}
 
 MAX_CARD_DELEGATIONS = 4
 _OPEN = {"received", "queued", "working", "waiting", "blocked"}
@@ -169,7 +195,7 @@ def is_stalled(updated_at: Any, *, now: float | None = None,
 
 
 def delegation_state_label(state: str, lang: str = "en") -> str:
-    lang = _lang(lang)
+    lang = _ulang(lang)
     key = str(state or "waiting")
     table = _DELEGATION_STATE[lang]
     return table.get(key, table["waiting"])
@@ -182,11 +208,11 @@ def delegation_line(item: dict[str, Any] | None, lang: str = "en") -> str:
         dst = str(row.get("to") or row.get("assignee") or "").strip()
         if not dst:
             return ""
-        lang = _lang(lang)
+        lang = _ulang(lang)
         state = delegation_state_label(str(row.get("state") or row.get("status") or "waiting"), lang)
         line = f"{src} → {dst}: {state}"
         if row.get("stalled"):
-            line += " · sin avance" if lang == "es" else " · stalled"
+            line += " · " + _STALLED[lang]
         return line
     except Exception:
         return ""
@@ -278,7 +304,7 @@ def snapshot(*, lang: str = "en", enabled: bool = True, origin: str = "",
              hint: str | None = None) -> dict[str, Any]:
     """Structured status card payload. Fail-open: never raises."""
     try:
-        lang = _lang(lang)
+        lang = _ulang(lang)
         stamp = now if now is not None else time.time()
         if not enabled:
             return {"enabled": False, "lang": lang, "updated_at": stamp,

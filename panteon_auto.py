@@ -302,6 +302,25 @@ _FAILED = {
 }
 
 
+_LANG_NAMES = {"fr": "French", "pt": "Portuguese", "de": "German"}
+
+
+def _directive(lang: str) -> str:
+    """The templates exist in en / es; for any other language say which one to answer in."""
+    name = _LANG_NAMES.get(str(lang or "").lower()[:2])
+    if not name:
+        return ""
+    return (f"[Language] The user writes in {name}. Write every line you add for the user "
+            f"(offers, confirmations, errors) in {name}.")
+
+
+def _join(parts: list[str], lang: str) -> str:
+    if not parts:
+        return ""
+    d = _directive(lang)
+    return "\n".join(parts + ([d] if d else []))
+
+
 def _name(preset: str, prefix: str) -> str:
     return _p.profile_name(preset, prefix)
 
@@ -408,7 +427,7 @@ def step(session_id: str, user_message: str, *, lang: str = "en", prefix: str = 
             elif out["team_add"]:
                 ctx_parts.append(_READY[lg].format(names=", ".join(out["team_add"]), first=out["team_add"][0],
                                                    task=_task_hint(offer.get("task"), lg)))
-            out["context"] = "\n".join(ctx_parts)
+            out["context"] = _join(ctx_parts, lang)
             return out
         if offer and is_no(user_message):
             for p in offer.get("presets", []):
@@ -416,7 +435,7 @@ def step(session_id: str, user_message: str, *, lang: str = "en", prefix: str = 
             offers.pop(session_id or "", None)
             st["offers"] = offers
             save_state(st, path)
-            out["context"] = "\n".join(ctx_parts)
+            out["context"] = _join(ctx_parts, lang)
             return out
 
         # 3) a fresh offer
@@ -442,7 +461,7 @@ def step(session_id: str, user_message: str, *, lang: str = "en", prefix: str = 
                 st["offers"] = offers
                 save_state(st, path)
                 ctx_parts.append(_FIRST_RUN[lg])
-        out["context"] = "\n".join(ctx_parts)
+        out["context"] = _join(ctx_parts, lang)
         return out
     except Exception:
         return out

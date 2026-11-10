@@ -105,11 +105,35 @@ PRESETS: dict[str, dict[str, str]] = {
 }
 
 PRESET_ORDER = tuple(PRESETS)
+
+# The card / command text is shown to the user in their language; role prompts (SOUL.md) stay en / es.
+_DOMAIN_X = {
+    "daedalus": ('code et ingénierie', 'código e engenharia', 'Code und Entwicklung'),
+    "iris": ('design et UI/UX', 'design e UI/UX', 'Design und UI/UX'),
+    "athena": ('recherche et analyse', 'pesquisa e análise', 'Recherche und Analyse'),
+    "calliope": ('rédaction et textes', 'redação e textos', 'Schreiben und Texte'),
+    "dionysus": ('jeux et prototypes interactifs', 'jogos e protótipos interativos', 'Spiele und interaktive Prototypen'),
+    "nike": ('QA, revue et vérification', 'QA, revisão e verificação', 'QA, Review und Verifikation'),
+    "mnemosyne": ('documentation et notes de connaissance', 'documentação e notas de conhecimento', 'Dokumentation und Wissensnotizen'),
+}
+
+
+def domain_for(preset_id: str, lang: str = "en") -> str:
+    code = str(lang or "").lower()[:2]
+    if code in ("fr", "pt", "de"):
+        return _DOMAIN_X[preset_id][("fr", "pt", "de").index(code)]
+    return PRESETS[preset_id]["domain_" + _l(code)]
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 def _l(lang: str) -> str:
     return "es" if str(lang or "").lower().startswith("es") else "en"
+
+
+def _ul(lang: str) -> str:
+    """The language of text the user reads (en / es / fr / pt / de)."""
+    code = str(lang or "").lower()[:2]
+    return code if code in ("en", "es", "fr", "pt", "de") else "en"
 
 
 def soul_for(preset_id: str, lang: str = "en") -> str:
@@ -321,11 +345,95 @@ _T = {
         "team_missing": "Estos perfiles aún no existen: {m}. Corre /panteon create primero.",
         "core_missing": "La mitad de escritorio de este plugin no está activa (actívala en Capabilities → Plugins), así que no se pueden crear perfiles desde aquí. Corre estas líneas en una terminal:",
     },
+    "fr": {
+        "title": "Panthéon — coordinateur + bots spécialisés (optionnel)",
+        "coord": "Coordinateur : le profil avec lequel tu parles dans Bot Chat (pas besoin de nouveau profil).",
+        "none": "aucun pour l'instant",
+        "cols": "preset · domaine · profil · équipe",
+        "yes": "dans l'équipe", "no": "hors de l'équipe", "ex": "le profil existe", "nx": "pas encore de profil",
+        "help": ("Commandes :\n  /panteon                      cette liste\n"
+                 "  /panteon show <id>            prompt de rôle d'un preset\n"
+                 "  /panteon plan <ids|all>       simulation : ce qui serait créé\n"
+                 "  /panteon create <ids|all> confirm   crée les profils (jamais automatique)\n"
+                 "  /panteon team <ids|all> confirm     les ajoute à team.assignees\n"
+                 "  /panteon team off confirm           vide l'équipe (mode solo)\n"
+                 "Rien ne change sans le mot confirm."),
+        "unknown": "Preset(s) inconnu(s) : {x}. Disponibles : {k}.",
+        "need_ids": "Indique au moins un id de preset (ou `all`).",
+        "need_confirm": "Simulation seulement. Ajoute le mot `confirm` pour appliquer.",
+        "plan_h": "Serait créé (s'il manque), cloné depuis la config de ton profil principal :",
+        "cli_h": "Lignes équivalentes dans un terminal :",
+        "cfg_h": "Config d'équipe à appliquer avec `/panteon team … confirm` (ou à coller) :",
+        "created": "Créés", "exists": "Existaient déjà (non modifiés)",
+        "failed": "Échecs", "invalid": "Nom invalide",
+        "after": ("Les profils apparaissent comme des lignes du panneau Bots en environ 30 s. Ouvre-les une "
+                  "fois pour démarrer leur Bot Chat. Puis `/panteon team <ids> confirm` pour leur déléguer du travail."),
+        "team_ok": "team.assignees est maintenant : {n}.", "team_off": "team.assignees vidé : retour au mode solo.",
+        "team_nocfg": "Ce Hermes ne permet pas d'écrire les réglages du plugin depuis une commande. Colle ceci dans config.yaml :",
+        "team_missing": "Ces profils n'existent pas encore : {m}. Lance d'abord /panteon create.",
+        "core_missing": "La moitié Desktop de ce plugin n'est pas active (active-la dans Capabilities → Plugins), donc les profils ne peuvent pas être créés d'ici. Lance les lignes ci-dessous dans un terminal :",
+    },
+    "pt": {
+        "title": "Panteão — coordenador + bots especializados (opcional)",
+        "coord": "Coordenador: o perfil com o qual você conversa no Bot Chat (não precisa de perfil novo).",
+        "none": "nenhum ainda",
+        "cols": "preset · domínio · perfil · equipe",
+        "yes": "na equipe", "no": "fora da equipe", "ex": "o perfil existe", "nx": "ainda sem perfil",
+        "help": ("Comandos:\n  /panteon                      esta lista\n"
+                 "  /panteon show <id>            prompt de função de um preset\n"
+                 "  /panteon plan <ids|all>       ensaio: o que seria criado\n"
+                 "  /panteon create <ids|all> confirm   cria os perfis (nunca automático)\n"
+                 "  /panteon team <ids|all> confirm     adiciona a team.assignees\n"
+                 "  /panteon team off confirm           esvazia a equipe (modo solo)\n"
+                 "Nada muda sem a palavra confirm."),
+        "unknown": "Preset(s) desconhecido(s): {x}. Disponíveis: {k}.",
+        "need_ids": "Informe pelo menos um id de preset (ou `all`).",
+        "need_confirm": "Somente ensaio. Adicione a palavra `confirm` para aplicar.",
+        "plan_h": "Seriam criados (se faltarem), clonando a config do seu perfil principal:",
+        "cli_h": "Linhas equivalentes no terminal:",
+        "cfg_h": "Config de equipe para aplicar com `/panteon team … confirm` (ou colar):",
+        "created": "Criados", "exists": "Já existiam (não foram alterados)",
+        "failed": "Falharam", "invalid": "Nome inválido",
+        "after": ("Os perfis aparecem como linhas do painel Bots em cerca de 30 s. Abra cada um uma vez "
+                  "para iniciar o Bot Chat dele. Depois `/panteon team <ids> confirm` para delegar trabalho."),
+        "team_ok": "team.assignees agora é: {n}.", "team_off": "team.assignees esvaziado: volta o modo solo.",
+        "team_nocfg": "Este Hermes não permite escrever as configurações do plugin por comando. Cole isto no config.yaml:",
+        "team_missing": "Estes perfis ainda não existem: {m}. Rode /panteon create primeiro.",
+        "core_missing": "A metade Desktop deste plugin não está ativa (ative em Capabilities → Plugins), então não dá para criar perfis daqui. Rode as linhas abaixo em um terminal:",
+    },
+    "de": {
+        "title": "Panteón — Koordinator + spezialisierte Bots (optional)",
+        "coord": "Koordinator: das Profil, mit dem du im Bot Chat sprichst (kein neues Profil nötig).",
+        "none": "noch keine",
+        "cols": "Preset · Bereich · Profil · Team",
+        "yes": "im Team", "no": "nicht im Team", "ex": "Profil existiert", "nx": "noch kein Profil",
+        "help": ("Befehle:\n  /panteon                      diese Liste\n"
+                 "  /panteon show <id>            Rollen-Prompt eines Presets\n"
+                 "  /panteon plan <ids|all>       Probelauf: was erstellt würde\n"
+                 "  /panteon create <ids|all> confirm   erstellt die Profile (nie automatisch)\n"
+                 "  /panteon team <ids|all> confirm     fügt sie zu team.assignees hinzu\n"
+                 "  /panteon team off confirm           leert das Team (Einzelbetrieb)\n"
+                 "Ohne das Wort confirm ändert sich nichts."),
+        "unknown": "Unbekannte(s) Preset(s): {x}. Bekannt: {k}.",
+        "need_ids": "Nenne mindestens eine Preset-ID (oder `all`).",
+        "need_confirm": "Nur Probelauf. Füge das Wort `confirm` hinzu, um anzuwenden.",
+        "plan_h": "Würde erstellt (falls es fehlt), geklont aus der Config deines Hauptprofils:",
+        "cli_h": "Entsprechende Terminal-Zeilen:",
+        "cfg_h": "Team-Config zum Anwenden mit `/panteon team … confirm` (oder einfügen):",
+        "created": "Erstellt", "exists": "Existierten bereits (unverändert)",
+        "failed": "Fehlgeschlagen", "invalid": "Ungültiger Name",
+        "after": ("Die Profile erscheinen in etwa 30 s als Zeilen im Bots-Panel. Öffne jedes einmal, um "
+                  "seinen Bot Chat zu starten. Danach `/panteon team <ids> confirm`, damit ihnen Arbeit delegiert wird."),
+        "team_ok": "team.assignees ist jetzt: {n}.", "team_off": "team.assignees geleert: wieder Einzelbetrieb.",
+        "team_nocfg": "Dieses Hermes erlaubt keine Plugin-Einstellungen per Befehl. Füge das in config.yaml ein:",
+        "team_missing": "Diese Profile existieren noch nicht: {m}. Führe zuerst /panteon create aus.",
+        "core_missing": "Die Desktop-Hälfte dieses Plugins ist nicht aktiv (aktiviere sie unter Capabilities → Plugins), daher können von hier keine Profile erstellt werden. Führe die Zeilen unten in einem Terminal aus:",
+    },
 }
 
 
 def _confirmed(tokens: list[str]) -> tuple[list[str], bool]:
-    rest = [t for t in tokens if t.lower() not in ("confirm", "confirmar", "--confirm")]
+    rest = [t for t in tokens if t.lower() not in ("confirm", "confirmar", "confirmer", "bestätigen", "--confirm")]
     return rest, len(rest) != len(tokens)
 
 
@@ -336,14 +444,17 @@ def handle(raw_args: str, *, lang: str = "en", prefix: str = "",
            set_team: Optional[Callable[[list[str]], bool]] = None,
            core_ok: bool = True) -> str:
     """Slash handler. Pure given its callables; never raises."""
-    t = _T[_l(lang)]
-    lg = _l(lang)
+    lg = _ul(lang)
+    t = _T[lg]
     try:
         toks = (raw_args or "").replace(",", " ").split()
         team = [str(x).lower() for x in (current_team or [])]
         sub = toks[0].lower() if toks else "list"
         sub = {"ls": "list", "listar": "list", "ver": "show", "plan": "plan", "ensayo": "plan",
-               "crear": "create", "equipo": "team", "ayuda": "help", "?": "help"}.get(sub, sub)
+               "crear": "create", "equipo": "team", "ayuda": "help", "?": "help",
+               "liste": "list", "lister": "list", "aide": "help", "créer": "create", "creer": "create",
+               "équipe": "team", "equipe": "team", "criar": "create", "ajuda": "help",
+               "erstellen": "create", "hilfe": "help"}.get(sub, sub)
         if sub in ("list", "help"):
             lines = [t["title"], t["coord"], t["cols"]]
             for pid in PRESET_ORDER:
@@ -352,7 +463,7 @@ def handle(raw_args: str, *, lang: str = "en", prefix: str = "",
                     has = exists(name)
                 except Exception:
                     has = False
-                lines.append(f"- {pid} · {PRESETS[pid]['domain_' + lg]} · "
+                lines.append(f"- {pid} · {domain_for(pid, lg)} · "
                              f"{t['ex'] if has else t['nx']} · {t['yes'] if name in team else t['no']}")
             lines.append("")
             lines.append(t["help"])
@@ -371,7 +482,7 @@ def handle(raw_args: str, *, lang: str = "en", prefix: str = "",
                 return t["need_ids"]
             names = [profile_name(i, prefix) for i in ids]
             if sub == "plan" or not ok:
-                out = [t["plan_h"]] + [f"- {n} ({PRESETS[i]['domain_' + lg]})" for i, n in zip(ids, names)]
+                out = [t["plan_h"]] + [f"- {n} ({domain_for(i, lg)})" for i, n in zip(ids, names)]
                 out += ["", t["cli_h"]] + cli_lines(ids, prefix)
                 out += ["", t["cfg_h"], config_snippet(names)]
                 if sub == "create":
@@ -392,7 +503,7 @@ def handle(raw_args: str, *, lang: str = "en", prefix: str = "",
             return "\n".join(out)
         if sub == "team":
             rest, ok = _confirmed(toks[1:])
-            if rest and rest[0].lower() in ("off", "none", "ninguno", "apagar"):
+            if rest and rest[0].lower() in ("off", "none", "ninguno", "apagar", "aucun", "nenhum", "keins"):
                 names: list[str] = []
             else:
                 ids, unk = parse_ids(rest)
@@ -411,4 +522,8 @@ def handle(raw_args: str, *, lang: str = "en", prefix: str = "",
             return t["team_ok"].format(n=", ".join(names)) if names else t["team_off"]
         return t["help"]
     except Exception as exc:
-        return f"/panteon failed ({exc}). Nothing was changed."
+        return {"es": f"/panteon falló ({exc}). No se cambió nada.",
+                "fr": f"/panteon a échoué ({exc}). Rien n'a été modifié.",
+                "pt": f"/panteon falhou ({exc}). Nada foi alterado.",
+                "de": f"/panteon ist fehlgeschlagen ({exc}). Nichts wurde geändert."}.get(
+                    _ul(lang), f"/panteon failed ({exc}). Nothing was changed.")

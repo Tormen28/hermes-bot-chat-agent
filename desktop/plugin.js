@@ -65,6 +65,87 @@ const I18N = {
     hint: 'Escribe /memoria para ver la memoria',
     showMore: 'Ver estado',
     hideMore: 'Ocultar estado'
+  },
+  fr: {
+    working: 'En cours…',
+    thinking: 'Réflexion…',
+    blocked: 'En attente de ton accord',
+    error: 'Erreur',
+    waitingTeam: 'En attente de',
+    done: 'Terminé ·',
+    queued: 'En file',
+    cardBlocked: 'Bloqué',
+    readyOne: '1 résultat prêt',
+    readyMany: '{n} résultats prêts',
+    readyElsewhereOne: '1 résultat prêt dans Bot Chat',
+    readyElsewhereMany: '{n} résultats prêts dans Bot Chat',
+    active: 'Actif',
+    others: 'Aussi',
+    delegations: 'Délégations',
+    pending: 'En attente',
+    recalled: 'Rappelés',
+    stalled: 'sans progrès',
+    states: { idle: 'libre', queued: 'en file', ready: 'prêt', waiting: 'en attente', working: 'en cours', blocked: 'bloqué', error: 'erreur', done: 'terminé' },
+    waitingReply: 'en attente de réponse',
+    workingState: 'en cours',
+    doneState: 'terminé',
+    hint: 'Écris /botmemory pour voir la mémoire',
+    showMore: 'Voir l’état',
+    hideMore: 'Masquer l’état'
+  },
+  pt: {
+    working: 'Trabalhando…',
+    thinking: 'Pensando…',
+    blocked: 'Aguardando seu OK',
+    error: 'Erro',
+    waitingTeam: 'Aguardando',
+    done: 'Pronto ·',
+    queued: 'Na fila',
+    cardBlocked: 'Bloqueado',
+    readyOne: '1 resultado pronto',
+    readyMany: '{n} resultados prontos',
+    readyElsewhereOne: '1 resultado pronto no Bot Chat',
+    readyElsewhereMany: '{n} resultados prontos no Bot Chat',
+    active: 'Ativo',
+    others: 'Também',
+    delegations: 'Delegações',
+    pending: 'Pendentes',
+    recalled: 'Lembradas',
+    stalled: 'sem progresso',
+    states: { idle: 'livre', queued: 'na fila', ready: 'pronto', waiting: 'aguardando', working: 'trabalhando', blocked: 'bloqueado', error: 'erro', done: 'concluído' },
+    waitingReply: 'aguardando resposta',
+    workingState: 'trabalhando',
+    doneState: 'pronto',
+    hint: 'Digite /botmemory para ver a memória',
+    showMore: 'Ver estado',
+    hideMore: 'Ocultar estado'
+  },
+  de: {
+    working: 'Arbeitet…',
+    thinking: 'Denkt nach…',
+    blocked: 'Wartet auf dein OK',
+    error: 'Fehler',
+    waitingTeam: 'Wartet auf',
+    done: 'Fertig ·',
+    queued: 'In der Warteschlange',
+    cardBlocked: 'Blockiert',
+    readyOne: '1 Ergebnis bereit',
+    readyMany: '{n} Ergebnisse bereit',
+    readyElsewhereOne: '1 Ergebnis bereit in Bot Chat',
+    readyElsewhereMany: '{n} Ergebnisse bereit in Bot Chat',
+    active: 'Aktiv',
+    others: 'Außerdem',
+    delegations: 'Delegationen',
+    pending: 'Offen',
+    recalled: 'Erinnert',
+    stalled: 'keine Fortschritte',
+    states: { idle: 'frei', queued: 'in Warteschlange', ready: 'fertig', waiting: 'wartet', working: 'arbeitet', blocked: 'blockiert', error: 'Fehler', done: 'erledigt' },
+    waitingReply: 'wartet auf Antwort',
+    workingState: 'arbeitet',
+    doneState: 'fertig',
+    hint: 'Tippe /botmemory, um das Gedächtnis zu sehen',
+    showMore: 'Status anzeigen',
+    hideMore: 'Status ausblenden'
   }
 }
 const TOOL_LABELS = {
@@ -83,12 +164,39 @@ const TOOL_LABELS = {
     kanban_create: 'Asignando a un compañero', kanban_list: 'Revisando el tablero',
     kanban_show: 'Leyendo una tarjeta', kanban_complete: 'Cerrando una tarjeta',
     session_search: 'Consultando sesiones', memory: 'Actualizando memoria', clarify: 'Esperando tu OK'
+  },
+  fr: {
+    read_file: 'Lecture de fichiers', write_file: 'Enregistrement', patch: 'Modification d’un fichier',
+    search_files: 'Recherche dans le code', terminal: 'Exécution d’une commande', execute_code: 'Exécution d’un script',
+    web_search: 'Recherche sur le web', web_extract: 'Lecture d’une page', delegate_task: 'Coordination d’un assistant',
+    kanban_create: 'Attribution à un coéquipier', kanban_list: 'Consultation du tableau',
+    kanban_show: 'Lecture d’une carte', kanban_complete: 'Clôture d’une carte',
+    session_search: 'Consultation des sessions', memory: 'Mise à jour de la mémoire', clarify: 'En attente de ton accord'
+  },
+  pt: {
+    read_file: 'Lendo arquivos', write_file: 'Salvando alterações', patch: 'Editando um arquivo',
+    search_files: 'Buscando no código', terminal: 'Executando um comando', execute_code: 'Executando um script',
+    web_search: 'Buscando na web', web_extract: 'Lendo uma página', delegate_task: 'Coordenando um ajudante',
+    kanban_create: 'Atribuindo a um colega', kanban_list: 'Verificando o quadro',
+    kanban_show: 'Lendo um cartão', kanban_complete: 'Fechando um cartão',
+    session_search: 'Consultando sessões', memory: 'Atualizando a memória', clarify: 'Aguardando seu OK'
+  },
+  de: {
+    read_file: 'Dateien lesen', write_file: 'Änderungen speichern', patch: 'Datei bearbeiten',
+    search_files: 'Code durchsuchen', terminal: 'Befehl ausführen', execute_code: 'Skript ausführen',
+    web_search: 'Im Web suchen', web_extract: 'Webseite lesen', delegate_task: 'Helfer koordinieren',
+    kanban_create: 'Teammitglied zuweisen', kanban_list: 'Board prüfen',
+    kanban_show: 'Karte lesen', kanban_complete: 'Karte schließen',
+    session_search: 'Sitzungen durchsuchen', memory: 'Gedächtnis aktualisieren', clarify: 'Wartet auf dein OK'
   }
 }
 
+let userLang = ''
+
 function pickLang() {
-  const nav = typeof navigator !== 'undefined' ? String(navigator.language || '') : ''
-  return nav.toLowerCase().startsWith('es') ? 'es' : 'en'
+  if (I18N[userLang]) return userLang
+  const nav = typeof navigator !== 'undefined' ? String(navigator.language || '').toLowerCase().slice(0, 2) : ''
+  return I18N[nav] ? nav : 'en'
 }
 
 export function labelFor(lang, toolName) {
@@ -290,6 +398,18 @@ const DELEGATION_STATE = {
   es: {
     received: 'esperando respuesta', queued: 'esperando respuesta', waiting: 'esperando respuesta',
     working: 'trabajando', blocked: 'bloqueado', ready: 'listo', error: 'error', cancelled: 'cancelado'
+  },
+  fr: {
+    received: 'en attente de réponse', queued: 'en attente de réponse', waiting: 'en attente de réponse',
+    working: 'en cours', blocked: 'bloqué', ready: 'terminé', error: 'erreur', cancelled: 'annulé'
+  },
+  pt: {
+    received: 'aguardando resposta', queued: 'aguardando resposta', waiting: 'aguardando resposta',
+    working: 'trabalhando', blocked: 'bloqueado', ready: 'pronto', error: 'erro', cancelled: 'cancelado'
+  },
+  de: {
+    received: 'wartet auf Antwort', queued: 'wartet auf Antwort', waiting: 'wartet auf Antwort',
+    working: 'arbeitet', blocked: 'blockiert', ready: 'fertig', error: 'Fehler', cancelled: 'abgebrochen'
   }
 }
 const OPEN_STATUSES = { received: 1, queued: 1, working: 1, waiting: 1, blocked: 1 }
@@ -308,11 +428,11 @@ export function delegationLine(item, lang) {
   const src = String(row.from || row.origin || 'Bot Chat').trim() || 'Bot Chat'
   const dst = String(row.to || row.assignee || '').trim()
   if (!dst) return ''
-  const l = lang === 'es' ? 'es' : 'en'
+  const l = I18N[lang] ? lang : 'en'
   const key = String(row.state || row.status || 'waiting')
   const state = (DELEGATION_STATE[l] && DELEGATION_STATE[l][key]) || DELEGATION_STATE[l].waiting
   let line = `${src} → ${dst}: ${state}`
-  if (row.stalled) line += l === 'es' ? ' · sin avance' : ' · stalled'
+  if (row.stalled) line += ' · ' + I18N[l].stalled
   return line
 }
 
@@ -328,7 +448,7 @@ export function normalizeSnapshot(raw) {
     : (bots.find(b => b.role === 'active') || null)
   return {
     enabled: src.enabled !== false,
-    lang: src.lang === 'es' ? 'es' : 'en',
+    lang: I18N[src.lang] ? src.lang : '',
     session_id: String(src.session_id || ''),
     origin: String(src.origin || (active && active.name) || ''),
     active_bot: active,
@@ -356,7 +476,8 @@ export function cardHasContent(snap) {
 
 export function buildCardModel(raw, lang) {
   const s = normalizeSnapshot(raw)
-  const l = lang === 'es' ? 'es' : (s.lang || 'en')
+  // the language the user writes in (from the snapshot) wins over the browser locale
+  const l = s.lang || (I18N[lang] ? lang : 'en')
   const t = I18N[l]
   if (!s.enabled) {
     return { visible: false, lang: l, labels: t, activeBot: null, others: [],
@@ -667,7 +788,9 @@ function setup(ctx) {
       Promise.resolve(ctx.rest('/status', { timeoutMs: 2000 })).then((raw) => {
         if (disposed) return
         misses = 0
-        $panel.set(normalizeSnapshot(raw))
+        const snap = normalizeSnapshot(raw)
+        if (snap.lang) userLang = snap.lang
+        $panel.set(snap)
         render()
       }).catch(() => { misses += 1 /* fail-open: keep the last snapshot */ })
     }

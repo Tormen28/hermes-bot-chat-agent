@@ -60,6 +60,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         bca._cache.clear()
         bca._questions.clear()
+        bca._reset_language_state()
         self.ctx = FakeCtx()
         bca.register(self.ctx)
         self.db = make_db([
