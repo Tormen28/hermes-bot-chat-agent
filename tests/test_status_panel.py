@@ -160,6 +160,18 @@ class TestStatusSnapshot(unittest.TestCase):
         self.assertIn("stalled", self.sp.delegation_line(stalled, "en").lower())
         self.assertIn("sin avance", self.sp.delegation_line(stalled, "es").lower())
 
+    def test_finished_delegation_stops_the_clock(self):
+        now = 1_000_000.0
+        snap = self.sp.snapshot(
+            lang="en", origin="Hermes", session_id="s", now=now,
+            tasks=[{"task_id": "d1", "title": "refactor", "status": "ready", "assignee": "daedalus",
+                    "created_at": now - 1200, "updated_at": now - 1170},
+                   {"task_id": "d2", "title": "research", "status": "waiting", "assignee": "athena",
+                    "created_at": now - 20, "updated_at": now - 5}])
+        by = {d["to"]: d for d in snap["delegations"]}
+        self.assertEqual(by["daedalus"]["elapsed_seconds"], 30, "done after 30s, not 20 minutes")
+        self.assertEqual(by["athena"]["elapsed_seconds"], 20, "open work keeps counting")
+
     def test_elapsed_and_stalled_threshold(self):
         self.assertEqual(self.sp.elapsed_seconds(self.now - 45, now=self.now), 45)
         self.assertEqual(self.sp.format_elapsed(45, "en"), "45s")

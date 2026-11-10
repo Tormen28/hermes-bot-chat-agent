@@ -28,6 +28,10 @@ from typing import Any, Optional
 FILENAME = "dm-delegations.json"
 MAX_ITEMS = 40
 KEEP_SECONDS = 24 * 3600
+# The status card is a live view, not a log: finished work leaves it after a while (the store keeps
+# it for KEEP_SECONDS). Failures stay longer so they are not missed.
+CARD_DONE_SECONDS = 15 * 60
+CARD_ERROR_SECONDS = 60 * 60
 
 _NOTICE_HEAD = re.compile(r"\[IMPORTANT:\s*(?:\d+\s+)?background process", re.I)
 _FINISHED = re.compile(r"(task finished|finished|completed|exited with code 0|tarea (?:terminada|finalizada)|termin[oó])", re.I)
@@ -159,7 +163,13 @@ def as_status_tasks(session_id: str = "", *, now: float | None = None, path: Pat
     t = float(now if now is not None else time.time())
     out = []
     for it in _load(path):
-        if t - float(it.get("updated_at") or 0) > KEEP_SECONDS:
+        age = t - float(it.get("updated_at") or 0)
+        if age > KEEP_SECONDS:
+            continue
+        state_now = str(it.get("state") or "")
+        if state_now == "ready" and age > CARD_DONE_SECONDS:
+            continue
+        if state_now == "error" and age > CARD_ERROR_SECONDS:
             continue
         if session_id and it.get("session_id") and it["session_id"] != session_id:
             continue

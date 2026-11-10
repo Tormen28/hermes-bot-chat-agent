@@ -201,6 +201,9 @@ def _normalize_task(task: dict[str, Any], *, origin: str, now: float,
     updated = float(task.get("updated_at") or created or 0)
     status = str(task.get("status") or "received")
     elapsed = elapsed_seconds(created, now=now)
+    if status not in _OPEN and updated >= created > 0:
+        # finished work stops the clock: "done 30s" must not turn into "done 20m 1s" as time passes
+        elapsed = elapsed_seconds(created, now=updated)
     stalled = is_stalled(updated, now=now, threshold=threshold, status=status)
     assignee = str(task.get("assignee") or "").strip()
     return {
