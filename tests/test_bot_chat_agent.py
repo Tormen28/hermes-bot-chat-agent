@@ -345,7 +345,7 @@ class TestPackaging(unittest.TestCase):
         self.assertRegex(y, r'requires_hermes:\s*">=0\.22\.5"')
         for h in ("pre_llm_call", "pre_tool_call", "post_tool_call", "kanban_task_completed"):
             self.assertIn(h, y)
-        self.assertRegex(y, r"version:\s*0\.3\.0-dev")
+        self.assertRegex(y, r"version:\s*0\.3\.0\b")
 
 
 if __name__ == "__main__":

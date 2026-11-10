@@ -64,7 +64,7 @@ _SECRET_RE = re.compile(
 
 _CUES: dict[str, tuple[re.Pattern[str], ...]] = {
     "decision": (
-        re.compile(r"(?i)\bdecision\s*:\s*(.+)"),
+        re.compile(r"(?i)\bdecisi[oó]n\s*:\s*(.+)"),
         re.compile(r"(?i)\bwe decided(?:\s+to)?\s+(.+)"),
         re.compile(r"(?i)\bdecidimos\s+(.+)"),
         re.compile(r"(?i)\bqueda decidido\s*:?\s*(.+)"),

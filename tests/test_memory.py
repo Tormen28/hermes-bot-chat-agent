@@ -179,6 +179,19 @@ class TestLongTermExtract(unittest.TestCase):
         self.assertTrue(any("HERMES_HOME" in h["text"] or "local store" in h["text"]
                             for h in hits))
 
+    def test_accented_spanish_decision_cue_is_stored_and_recalled_in_another_session(self):
+        # found in the live two-session run: "Decisión:" (with accent) was not recognised
+        n = self.mem.remember_turn(
+            self.store, "session-one",
+            messages=[u("Decisión: para el proyecto Aurora usaremos PostgreSQL 16 y no MySQL, por las extensiones.")],
+            final_response="Anotado.")
+        self.assertGreaterEqual(n, 1)
+        hits = self.store.retrieve("¿qué base de datos usamos en el proyecto Aurora?", budget_tokens=200)
+        self.assertTrue(any("PostgreSQL" in h["text"] for h in hits), hits)
+        block = self.mem.render_for_turn(self.store, "session-two", [u("¿qué base de datos usamos en el proyecto Aurora?")],
+                                         query="¿qué base de datos usamos en el proyecto Aurora?", lang="es")
+        self.assertIn("PostgreSQL", block)
+
     def test_secret_like_text_is_not_stored(self):
         self.mem.remember_turn(
             self.store, "s1",

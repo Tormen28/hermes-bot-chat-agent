@@ -1,7 +1,7 @@
 name: bot-chat-agent
 label: Bot Chat Agent
 kind: standalone
-version: 0.3.0-dev
+version: 0.3.0
 author: "Tormen28"
 license: MIT
 homepage: "https://github.com/Tormen28/hermes-bot-chat-agent"

@@ -31,6 +31,7 @@ const I18N = {
     pending: 'Pending',
     recalled: 'Recalled',
     stalled: 'stalled',
+    states: { idle: 'idle', queued: 'queued', ready: 'ready', waiting: 'waiting', working: 'working', blocked: 'blocked', error: 'error', done: 'done' },
     waitingReply: 'waiting for reply',
     workingState: 'working',
     doneState: 'done',
@@ -57,6 +58,7 @@ const I18N = {
     pending: 'Pendientes',
     recalled: 'Recordadas',
     stalled: 'sin avance',
+    states: { idle: 'libre', queued: 'en cola', ready: 'listo', waiting: 'esperando', working: 'trabajando', blocked: 'bloqueado', error: 'error', done: 'hecho' },
     waitingReply: 'esperando respuesta',
     workingState: 'trabajando',
     doneState: 'listo',
@@ -99,6 +101,11 @@ export function shortError(raw, maxLen = 68) {
   const first = String(raw || '').replace(/\[bot-chat-agent\]\s*/i, '').split(/\r?\n/)[0].trim()
   if (!first) return ''
   return first.length > maxLen ? `${first.slice(0, maxLen - 1).trimEnd()}…` : first
+}
+
+function stateText(labels, state) {
+  const raw = String(state || '')
+  return (labels && labels.states && labels.states[raw]) || raw
 }
 
 export function readyCount(ready, sessionId) {
@@ -479,7 +486,7 @@ function StatusBar() {
     kids.push(jsxs('div', { style: ROW, children: [
       jsx('span', { style: PILL, children: model.labels.active }),
       jsx('strong', { style: { fontWeight: 600, color: 'var(--ui-text-primary, inherit)' }, children: model.activeBot.name }),
-      jsx('span', { style: MUTED, children: model.activeBot.state || '' })
+      jsx('span', { style: MUTED, children: stateText(model.labels, model.activeBot.state) })
     ] }))
   }
   for (const d of model.delegations) {
@@ -487,7 +494,7 @@ function StatusBar() {
     kids.push(lineRow(d.text, extra, d.stalled))
   }
   for (const bot of model.others) {
-    const state = bot.state || ''
+    const state = stateText(model.labels, bot.state)
     const extra = [formatElapsed(bot.elapsed_seconds), bot.stalled ? model.labels.stalled : bot.last_activity].filter(Boolean).join(' · ')
     kids.push(lineRow(`${model.labels.others}: ${bot.name}${state ? ' · ' + state : ''}`, extra, Boolean(bot.stalled)))
   }

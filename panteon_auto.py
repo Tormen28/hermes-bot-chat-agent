@@ -279,10 +279,16 @@ _APPROVED = {
 _READY = {
     "en": ("[Panteón] Created and added to the team: {names}. Now hand the user's request to {first} with the "
            "message_agent tool (one message, include the request and what you expect back), then tell the "
-           "user in one line that you delegated it. The reply comes back later on its own.{task}"),
+           "user in one line that you delegated it. The reply comes back later on its own. A new bot only shows "
+           "up in your tools from the next turn: if message_agent is not in your tool list yet, do not "
+           "try; tell the user in one line that {first} is ready and that you will hand the request over "
+           "on their next message.{task}"),
     "es": ("[Panteón] Creado y añadido al equipo: {names}. Ahora pásale la petición del usuario a {first} con la "
            "herramienta message_agent (un mensaje, con la petición y lo que esperas de vuelta) y dile al "
-           "usuario en una línea que se la delegaste. La respuesta vuelve sola más tarde.{task}"),
+           "usuario en una línea que se la delegaste. La respuesta vuelve sola más tarde. Un bot nuevo aparece "
+           "en tus herramientas desde el turno siguiente: si message_agent aún no está en tu lista, no lo "
+           "intentes; dile al usuario en una línea que {first} ya está listo y que le pasas la petición en "
+           "su próximo mensaje.{task}"),
 }
 _REMIND = {
     "en": ("[Panteón] Pending hand-off: the request has not been sent to {name} yet. Send it now with the "

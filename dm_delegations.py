@@ -92,7 +92,9 @@ def record_call(args: Any, result: Any, *, session_id: str = "", origin: str = "
     to = _target_name(a, data)
     if not to:
         return None
-    title = " ".join(str(a.get("message") or a.get("content") or "").split())[:80]
+    title = " ".join(str(a.get("message") or a.get("content") or "").split())
+    if len(title) > 80:
+        title = title[:80].rsplit(" ", 1)[0].rstrip(" ,.;:") + "…"
     if data.get("error"):
         state, did = "error", f"err-{uuid.uuid4().hex[:8]}"
     elif str(data.get("status") or "").lower() in ("queued", "delivered", "accepted") and data.get("delivery_id"):

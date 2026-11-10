@@ -160,7 +160,7 @@ Hay un camino que no necesita Electron: **la versión web de Hermes** (`hermes w
 
 ## 8. Panteón genérico (alcance añadido)
 
-Función opcional del plugin público: `/pantheon` (alias `/panteon`). El coordinador es el perfil con el que ya hablas (Hermes); los "dioses" son perfiles normales de Hermes con un rol (presets neutros: daedalus código, iris diseño, athena investigación, calliope escritura, dionysus juegos, nike QA, mnemosyne docs). Se crean con las funciones del core (`hermes_cli.profiles.create_profile`), aparecen como filas del panel Bots stock y la delegación va por kanban/`team.assignees` y `message_agent`. Nada se crea sin la palabra `confirm`. Los dioses personales de Gustavo van solo como configuración (`team.assignees`), nunca en el código público. Código: `panteon.py`; pruebas: `tests/test_panteon.py` (25, incluye pruebas contra el core real).
+Función opcional del plugin público: `/pantheon` (alias `/panteon`). El coordinador es el perfil con el que ya hablas (Hermes); los "dioses" son perfiles normales de Hermes con un rol (presets neutros: daedalus código, iris diseño, athena investigación, calliope escritura, dionysus juegos, nike QA, mnemosyne docs). Se crean con las funciones del core (RPC estándar `profiles.create` / `profiles.configure` desde la mitad Desktop; sin imports privados), aparecen como filas del panel Bots stock y la delegación va por kanban/`team.assignees` y `message_agent`. Nada se crea sin la palabra `confirm`. Los dioses personales de Gustavo van solo como configuración (`team.assignees`), nunca en el código público. Código: `panteon.py`; pruebas: `tests/test_panteon.py` (25, incluye pruebas contra el core real).
 
 ## 9. Resultados de la ejecución P0–P5 (box, 2026-11-10)
 
@@ -175,3 +175,13 @@ Función opcional del plugin público: `/pantheon` (alias `/panteon`). El coordi
 | Capturas mock | `04-status-card.png` y `bot-chat-status-card.png` movidas a `/workspace/_archivo-plugin-aparte/` con nota; quitadas de los README. |
 
 Pendiente (P6/P7, en tu PC): medir la lentitud en sesión larga con `context.engine: bot-chat` (hoy inactivo; pasar tests **no** demuestra que la lentitud esté arreglada) e instalar con respaldo.
+
+
+## 10. Versión final 0.3.0 (box, 2026-11-10) — sustituye ideas anteriores
+
+- **Panteón casi automático, dentro del panel Bots stock.** No hay ningún panel de panteón aparte (idea descartada). Cada especialista es una fila normal de Bots (nombre = nombre del dios). La tarjeta de estado sobre el compositor se queda.
+- **Flujo:** petición que encaja claramente → Hermes responde y añade UNA línea de oferta → sí simple → la mitad Desktop crea el perfil (`profiles.create` + `profiles.configure`) → entra a `team.assignees` → `message_agent`. Nunca se crea sin el sí. `/pantheon` queda como respaldo avanzado. Sugerencia inicial opcional, una sola vez.
+- **Delegaciones en la tarjeta (B):** ack real de `message_agent` → «esperando respuesta»; «listo» solo con el aviso de finalización real (exit 0). Verificado en vivo en la Webapp v0.23.1 con modelo simulado.
+- **Memoria entre sesiones (C):** verificada en vivo; se corrigió el cue `Decisión:` con tilde.
+- **Regla 9 (D):** sin imports privados (`cron.*`, `agent.context_compressor`, `hermes_cli.profiles`); `validate` limpio.
+- **Pendiente solo en el PC de Gustavo:** medir una sesión larga real (P6) y la instalación con respaldo previo (P7). El motor de contexto sigue apagado por defecto y la velocidad en sesiones largas NO está medida.

@@ -2,9 +2,11 @@
 
 **English** · [Español](#español)
 
-> A calmer, simpler Hermes Bot Chat for people who just want answers.
+> A calmer, simpler Hermes Bot Chat for people who just want answers, with a memory, a status card and a team of specialists that appear only when you say yes.
 
-**0.3.0-dev** on this branch is a private/test cut for a personal Hermes. It is not the Nous catalog release. Installing `Tormen28/hermes-bot-chat-agent` without a pin follows `main` (0.2.0) until this is reviewed and merged. To try this cut, install from a checkout of the branch.
+**0.3.0** adds, on top of 0.2.0 (style, guard, status bar): a hardened guard, pending-ask reminders, local short-term and long-term memory (`/memoria`), durable background delivery, a live status card with multi-bot delegations, an *automatic but opt-in* panteón of specialist bots inside the stock **Bots** panel, a cron bridge, and an optional (off by default) context engine.
+
+**Two halves, one package.** The Python half works as soon as you enable the plugin. The Desktop half (status card, panteón offers and profile creation) is **opt-in in the app**: open **Capabilities → Plugins → Bot Chat Agent** and switch it **On** (the Desktop remembers the choice). Without it you still get style, guard and memory; you just do not get the card or the one-line offers, and `/pantheon create` prints terminal commands instead of creating profiles.
 
 ## Why this exists
 
@@ -22,7 +24,17 @@ If you want every detail, open a normal session: it stays exactly as it was.
 |---|---|---|
 | ![Working bar](docs/screenshots/01-loading.png) | ![Answer, reasoning collapsed](docs/screenshots/02-answer.png) | ![Short answer](docs/screenshots/03-short-answer.png) |
 
-*(Captured on a clean demo profile; the Desktop UI was in Spanish, so the bar reads "Cargando… · Pensando…".)*
+*(Real Hermes Desktop captures on a clean demo profile; the UI was in Spanish, so the bar reads "Cargando… · Pensando…".)*
+
+Real Hermes Webapp v0.23.1 (built from source) with this plugin, throw-away profile. **The model there is a simulated local mock** (no API key on that machine), so these frames prove the plugin's wiring, not how a real LLM would phrase things:
+
+| Enable the Desktop half | One-line offer | Created: a normal Bots row |
+|---|---|---|
+| ![Capabilities → Plugins](docs/screenshots/05-real-enable-desktop-half.png) | ![Offer](docs/screenshots/09-real-panteon-offer.png) | ![Created](docs/screenshots/10-real-panteon-created.png) |
+
+| Delegation waiting | Delegation done | Memory in a new session |
+|---|---|---|
+| ![Waiting](docs/screenshots/11-real-delegation-waiting.png) | ![Done](docs/screenshots/12-real-delegation-done.png) | ![Memory](docs/screenshots/08-real-memory-session-2.png) |
 
 ## What it does
 
@@ -30,10 +42,14 @@ If you want every detail, open a normal session: it stays exactly as it was.
 |---|---|
 | Style (`pre_llm_call`) | A short "act, don't narrate" contract: one acknowledgement (`On it — …`), then the work, then a short result. At most one question per turn. |
 | Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models, kanban-lock bypasses) and asks you first. Covers both the Bot Chat session and its `delegate_task` / subagent child sessions. It never approves anything. |
+| Pending asks | If a mid-turn steer arrives before the first request was answered, the next turn gets a `[Pending asks]` reminder so the first request is not dropped. |
+| Memory | Short-term: a rolling summary plus those pending asks. Long-term: decisions, project state and lessons in a local SQLite store, retrieved only when they overlap the current request. No vault, no API keys, no network. |
+| Background delivery | With teammates configured, work can run in another process; the origin Bot Chat gets the result (on Hermes 0.23 as a note in the next turn). |
+| Panteón (automatic, opt-in) | When a request clearly fits a specialty you have no bot for, Hermes adds ONE line ("I can create Daedalus (code) for this, shall I?"). On a plain yes it creates the profile, adds it to `team.assignees` and hands the request over with `message_agent`. Nothing is created without that yes. See [Panteón](#panteón-automatic-optional-generic). |
 | Team | With no `team.assignees`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
 | Desktop | A quiet status bar above the composer (`Working… · <step>`, `Waiting for your OK`, `Waiting on <profile>`, `Done · <summary>`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
 | `/memoria` (alias `/botmemory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. `/memoria` replies in Spanish; `/botmemory` follows the plugin language (English by default). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
-| Status panel | A compact, expandable card above the Bot Chat composer (same `COMPOSER_AREAS.top` slot as the Working bar). It shows the active bot and other bots, live delegation lines (`Padre → Hefesto: waiting for reply` → `done` / `listo`), elapsed time, a stalled warning, pending asks, memories recalled this turn, the compact token count, and a `/memoria` hint. Toggle with `status_panel.enabled`. |
+| Status panel | A compact, expandable card above the Bot Chat composer (same `COMPOSER_AREAS.top` slot as the Working bar). It shows the active bot and other bots, live delegation lines (`Hermes → Daedalus: waiting for reply` → `done`), elapsed time, a stalled warning, pending asks, memories recalled this turn, the compact token count, and a `/memoria` hint. Toggle with `status_panel.enabled`. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
 The safety guard also protects `delegate_task` / subagent child sessions spawned from a Bot Chat (inheriting parent Bot Chat protection), while normal sessions and subagents of normal sessions behave exactly as before.
@@ -48,8 +64,8 @@ hermes plugins install /path/to/this/checkout
 hermes plugins enable bot-chat-agent
 ```
 
-`hermes plugins install Tormen28/hermes-bot-chat-agent` follows the default branch. Use a local checkout of this branch until it is merged.
-Desktop: **Capabilities → Plugins → Bot Chat Agent** → enable. Restart the Desktop app if it does not appear.
+`hermes plugins install bot-chat-agent` installs the catalog pin; `hermes plugins install Tormen28/hermes-bot-chat-agent` follows the default branch.
+Desktop / Webapp: **Capabilities → Plugins → Bot Chat Agent** → switch **On** (this enables the Desktop half: card + panteón). Restart the app if it does not appear.
 Then open **Bots**, pick a bot and chat.
 
 ## Disable / uninstall
@@ -118,21 +134,29 @@ plugins:
           summary_budget_tokens: 400
           long_term_budget_tokens: 400
           max_entries: 500     # prune oldest when the store grows past this
+        panteon:
+          auto: true           # one-line offers (never creates without a yes); false = /pantheon only
+          first_run_suggestion: true   # one-time starter-set suggestion
+          create_wait_seconds: 8
+          prefix: ""
+          roster_in_context: true
         status_panel:
           enabled: true        # Desktop card + compact [Status] header; false hides both
           stalled_after_seconds: 120  # warn when a running task makes no progress
 ```
 Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also treated as an outbound send.
 
-**Bounded context (Fase 2).** The turn context is split into stable instructions (≤300 tokens), project state, tasks and notices (≤1,500 tokens, 2,000 per piece), measured with the tokenizer. After the first full turn the team note is incremental — only what changed is injected; a turn with no changes injects one short line. Critical constraints are never dropped; anything else that does not fit is listed as dropped. The project card (`<HERMES_HOME>/bot-chat-agent/project-card.md`, wow 7) is the source of truth: manual edits always win, are versioned in the store, and derived content never writes the file. After a cancellation, a compaction or a reopen, the context is rebuilt from the durable store. The plugin also registers a delegating `ContextEngine` named `bot-chat` (no core change: compaction is still delegated to the core's `ContextCompressor`; only `select_context` is overridden) — activate it with `context.engine: bot-chat` in the core config (single slot; without it the `pre_llm_call` hook keeps injecting).
+**Bounded context (Fase 2).** The turn context is split into stable instructions (≤300 tokens), project state, tasks and notices (≤1,500 tokens, 2,000 per piece), measured with the tokenizer. After the first full turn the team note is incremental — only what changed is injected; a turn with no changes injects one short line. Critical constraints are never dropped; anything else that does not fit is listed as dropped. The project card (`<HERMES_HOME>/bot-chat-agent/project-card.md`, wow 7) is the source of truth: manual edits always win, are versioned in the store, and derived content never writes the file. After a cancellation, a compaction or a reopen, the context is rebuilt from the durable store. The plugin also registers a `ContextEngine` named `bot-chat` — **inactive by default**; activate it with `context.engine: bot-chat` in the core config (single slot; without it the `pre_llm_call` hook keeps injecting). It uses only public plugin surfaces: it delegates to the core's own compressor when that is reachable, and otherwise falls back to a small deterministic local compactor (keeps the first/last messages, never splits a tool call from its result, replaces the middle with one digest note; no LLM call). That fallback is weaker than a model-written summary. **Whether any of this makes a very long session faster has NOT been measured** (tests prove the mechanism and bounded sizes, not live latency).
 
-**Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) — no model and no network. Secret-like text is not stored. Fail-open: a missing or corrupt store never breaks the turn. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
+**Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:` / `Decisión:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) — no model and no network. Secret-like text is not stored. Fail-open: a missing or corrupt store never breaks the turn. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
 
 **`/memoria` and `/botmemory`.** In a Bot Chat session type `/memoria` (Spanish labels) or `/botmemory` (English by default) to see the long-term store, the rolling summary and any pending asks. Each long-term row has an 8-character id: `/botmemory forget ab12cd34` drops one entry, `/botmemory edit ab12cd34 New text` corrects it, `/botmemory clear` asks for confirmation and `/botmemory clear confirm` erases every long-term row. Nothing is changed if the id is unknown or the store cannot be opened.
 
-**Status panel.** The Desktop UI shows an expandable card above the Bot Chat composer (the same `COMPOSER_AREAS.top` slot as the Working / Waiting bar). It lists the active bot and the other bots on the board with their last activity, live delegation lines (`Padre → Hefesto: waiting for reply`, then `done` / `listo` when the result arrives), elapsed time on running tasks, a stalled warning when a task makes no progress past `status_panel.stalled_after_seconds` (default 2 minutes), pending asks, memories recalled this turn, the compact token count, and a hint to type `/memoria`. Idle sessions stay quiet. Switch it off with `status_panel.enabled: false`.
+**Delegations on the card.** `message_agent` is fire-and-forget in the core: it returns a queued ack at once and the teammate's reply comes back later as a background-process completion notice. The plugin shows `Hermes → Daedalus: waiting for reply` from the real ack (`post_tool_call`), and `done` only when a completion notice that names that teammate and carries success evidence (`exit code 0`) arrives; a failure notice shows `error`; ambiguous text leaves it waiting. Works on v0.23.0 and v0.23.1 with no core change.
 
-Python hooks publish the same state to `<HERMES_HOME>/bot-chat-agent/status.json`. The Desktop half feature-detects `ctx.rest('/status')` (served by `dashboard/plugin_api.py`) and polls it; if that route is not mounted on a given gateway, the card still renders from the last snapshot and never breaks the rest of the plugin. The model-facing `[Status]` header in `pre_llm_call` is unchanged. Real render in Hermes Webapp v0.23.1 (simulated model): `docs/screenshots/04-real-hermes-webapp-v0.23.1.png`. A headless walkthrough is `demo/hackathon_demo.py`.
+**Status panel.** The Desktop UI shows an expandable card above the Bot Chat composer (the same `COMPOSER_AREAS.top` slot as the Working / Waiting bar). It lists the active bot and the other bots on the board with their last activity, live delegation lines (`Hermes → Daedalus: waiting for reply`, then `done` when the real completion notice arrives; never `done` by timer or guess), elapsed time on running tasks, a stalled warning when a task makes no progress past `status_panel.stalled_after_seconds` (default 2 minutes), pending asks, memories recalled this turn, the compact token count, and a hint to type `/memoria`. Idle sessions stay quiet. Switch it off with `status_panel.enabled: false`.
+
+Python hooks publish the same state to `<HERMES_HOME>/bot-chat-agent/status.json`. The Desktop half feature-detects `ctx.rest('/status')` (served by `dashboard/plugin_api.py`) and polls it; if that route is not mounted on a given gateway, the card still renders from the last snapshot and never breaks the rest of the plugin. The model-facing `[Status]` header in `pre_llm_call` is unchanged. Real render in Hermes Webapp v0.23.1 (simulated model): `docs/screenshots/11-real-delegation-waiting.png` and `12-real-delegation-done.png`. A headless walkthrough is `demo/hackathon_demo.py`.
 
 
 ### Guard presets
@@ -200,20 +224,57 @@ The worker is allowed to finish only its own card: Hermes sets `HERMES_KANBAN_TA
 
 ### What this plugin does not include
 
-Hermes already owns the board. This plugin does not ship `kanban_*` tools, does not start the dispatcher, and does not create or edit profiles.
+Hermes already owns the board. This plugin does not ship `kanban_*` tools, does not start the dispatcher, and does not edit profiles. The only profiles it ever creates are panteón specialists, only after your yes (or `/pantheon create … confirm`), and only through the Desktop half calling the app's own `profiles.create`.
 
 - The orchestrator profile needs the Hermes `kanban` toolset, or `kanban_create` is not there to call.
-- A running gateway dispatcher spawns the assignee. Profile names in `team.assignees` must already exist; this plugin will not invent them.
+- A running gateway dispatcher spawns the assignee. Profile names in `team.assignees` must already exist (panteón creates them for you after a yes); this plugin will not invent them behind your back.
 - Hermes stamps `tasks.session_id` from `HERMES_SESSION_ID`. That is how the turn note lists open cards for this chat. Completing by task id still checks the assignee even when `session_id` is missing.
 - Hermes `kanban.auto_subscribe_on_create` (default true) wakes the originating chat when a card finishes. This plugin adds the one-line note and the Desktop phases; it does not replace that subscription.
 - Default board path: `<HERMES_HOME>/kanban.db`, or `<HERMES_HOME>/kanban/boards/<HERMES_KANBAN_BOARD>/kanban.db`. Override with `kanban_db` or `HERMES_KANBAN_DB`.
 - Delivery store: `<HERMES_HOME>/bot-chat-agent/deliveries.db` (SQLite; task id, kind, session id, assignee, one-line summary, status). Override with `delivery.db_path`. The legacy `team-notify.json` is imported once (pending entries not yet announced) and never modified afterwards; `delivery.backend: json` reverts to the legacy path without uninstalling. The store must live on a local disk, never in a synced folder or on a network path (checked at startup, warning only). Fase 1b: the outbox is complete — relay claim leases, dead-letter after 5 failed attempts, retention prune (delivered/seen only, `delivery.retention_days`), `oldest_pending_age_seconds` in `stats()`, and a switchable durable destination: `delivery.destination: offer` (default — the result is offered in the next turn) or `auto`/`b1`, which writes the result as a durable row in the destination session's transcript when the core exposes B1, with a stable id per delivery (a retry after a crash returns the same message id, never a second row) and a durable mark recorded before confirming, so a crash between the write and the confirm can never re-offer the result.
 - It does not write `state.db` or `kanban.db`, and it does not edit `SOUL.md` or profile files.
 
+## Panteón (automatic, optional, generic)
+
+The panteón is a small team of specialist bots. They are ordinary Hermes profiles, so they appear as **rows in the stock Bots panel** next to your bot. There is no separate panel.
+
+**It is almost automatic, but never without your yes.** With the Desktop half on, when a Bot Chat request clearly fits one specialty you have no bot for, Hermes answers as usual and adds one short line, for example *"I can create Daedalus (code and engineering) for this, shall I?"* (in your language). Answer **yes** and the plugin creates the profile, adds it to `team.assignees` and Hermes hands the request over with `message_agent`; the row shows up in **Bots** and the status card follows the delegation. Answer **no** and it will not ask for that specialty again for three days. Once, on a fresh install, Hermes may also suggest a small starter set (Daedalus, Iris, Athena); it creates nothing until you say yes.
+
+Presets (neutral names, no personal data): `daedalus` code · `iris` design · `athena` research · `calliope` writing · `dionysus` games · `nike` QA/review · `mnemosyne` docs.
+
+Good to know:
+
+- The offer line is an instruction injected into Bot Chat turns; **a real model follows it most of the time but not guaranteed** (the screenshots use a simulated model that always follows it).
+- A new bot appears in Hermes' tool list from the *next* turn, so on the very first creation Hermes may say "Daedalus is ready, I'll pass it on with your next message"; the plugin then reminds it (at most twice) and the hand-off happens on your next message.
+- Without the Desktop half enabled (or if profile creation fails) nothing is created and Hermes is told to print the exact `hermes profile create` lines instead.
+- Turn the whole thing off with `panteon.auto: false` (keep `/pantheon`), and the first-run suggestion with `panteon.first_run_suggestion: false`.
+
+`/pantheon` (alias `/panteon`) remains as an advanced fallback:
+
+```
+/pantheon                          # list presets, which profiles exist, who is in the team
+/pantheon show iris                # the role prompt
+/pantheon plan daedalus iris       # dry run + the equivalent `hermes profile create` lines
+/pantheon create daedalus iris confirm   # creates the profiles via the Desktop half (needs it On)
+/pantheon team daedalus iris confirm     # writes team.assignees
+/pantheon team off confirm               # back to single-operator
+```
+
+Nothing is created or changed without the word `confirm`. Existing profiles are never touched. Use your own profiles instead of presets by listing their names in `team.assignees`. `panteon.prefix` prepends a prefix to preset profile names; `panteon.roster_in_context: false` drops the roster line.
+
+## Honest limits
+
+- **Long-session speed is not measured.** The memory block is bounded and tested (~720 tokens in a synthetic 200-turn bench), but on Hermes v0.23 the core's own history still grows, the optional context engine is off by default, and nobody has timed a real long session with it on. Tests passing is not the same as "a long session is no longer slow".
+- Memory extraction is cue-based (no model). The panteón offer depends on the model following an injected instruction.
+- Screenshots 05–12 use a simulated model; they show the wiring, not real LLM quality.
+- Durable in-transcript delivery needs core APIs that v0.23 does not expose; on 0.23 the result is offered in the next turn (nothing is lost).
+
 ## Disclosures
 - Reads `<HERMES_HOME>/state.db` **read-only** (sessions table: id, title, parent, source) to find Bot Chat sessions. Never writes it.
 - Reads the kanban board **read-only** (`tasks`, `task_links`) when team wait or the open-card note needs it. Never writes it.
 - Never reads `.env`, `auth.json` or any credential store. No network calls. No telemetry.
+- Writes only under `<HERMES_HOME>/bot-chat-agent/` (`memory.db`, `deliveries.db`, `status.json`, `panteon-auto.json`, `dm-delegations.json`, optional `project-card.md`). Cron-bridge writes (pause/resume/remove a job) go through the core's own `cronjob_manage` tool via the public tool registry, never by editing `jobs.json`.
+- Desktop half: after your yes it calls the app's stock `profiles.create` / `profiles.configure` for one preset profile and reports the result to `/api/plugins/bot-chat-agent`. It never creates a profile without that yes.
 - Desktop: changes the `reasoning.collapsedByDefault` setting while a Bot Chat is focused and restores the previous value when you leave it or disable the plugin. If the app crashes inside a Bot Chat, the setting may stay on; toggle it in Settings.
 
 ## Known limitation
@@ -243,7 +304,11 @@ MIT. See [LICENSE](LICENSE).
 
 ## Español
 
-> Un Bot Chat de Hermes más tranquilo y simple, para quien solo quiere respuestas.
+> Un Bot Chat de Hermes más tranquilo y simple, para quien solo quiere respuestas, con memoria, una tarjeta de estado y un equipo de especialistas que solo aparecen si tú dices que sí.
+
+**0.3.0** suma, sobre la 0.2.0 (estilo, guardia, barra de estado): guardia reforzada, recordatorio de pedidos pendientes, memoria local corta y larga (`/memoria`), entrega durable en segundo plano, tarjeta de estado con delegaciones entre bots, un **panteón casi automático pero opcional** de bots especialistas dentro del panel **Bots** de siempre, un puente a cron y un motor de contexto opcional (apagado por defecto).
+
+**Dos mitades, un paquete.** La mitad Python funciona al activar el plugin. La mitad **Desktop** (tarjeta de estado, ofertas del panteón y creación de perfiles) es **opcional dentro de la app**: abre **Capacidades → Plugins → Bot Chat Agent** y ponla en **On**. Sin eso sigues teniendo estilo, guardia y memoria, pero no la tarjeta ni las ofertas, y `/pantheon create` solo te imprime los comandos de terminal.
 
 ### Por qué existe
 
@@ -301,23 +366,14 @@ nunca lee `.env`, `auth.json` ni credenciales, no hace llamadas de red y no env�
 (Fase 2) se activa con `context.engine: bot-chat`; la ficha de proyecto vive en
 `<HERMES_HOME>/bot-chat-agent/project-card.md` y puedes editarla a mano: tus ediciones siempre mandan.
 
+**Panteón.** Con la mitad Desktop encendida, cuando un pedido encaja claramente con una especialidad sin bot, Hermes responde normal y añade una línea corta (p. ej. *«Puedo crear a Daedalus (código e ingeniería) para esto, ¿lo creo?»*). Si dices **sí**, se crea el perfil, entra al equipo y Hermes le pasa el pedido; si dices **no**, no vuelve a ofrecerlo en tres días. Una sola vez, en una instalación nueva, puede sugerir un equipo inicial pequeño (Daedalus, Iris, Athena) y no crea nada hasta que digas que sí. `/pantheon` sigue como respaldo avanzado (`/pantheon plan …`, `/pantheon create … confirm`, `/pantheon team … confirm`). Se apaga con `panteon.auto: false`. La línea de oferta es una instrucción al modelo: **un modelo real la sigue casi siempre, no siempre**. Un bot recién creado aparece en las herramientas desde el turno siguiente, así que la primera vez Hermes puede decirte «ya está listo, te lo paso con tu próximo mensaje».
+
+**Límites honestos.** **No se ha medido la velocidad en sesiones largas**: el bloque de memoria está acotado y probado, pero el historial del core sigue creciendo y el motor de contexto opcional (`context.engine: bot-chat`) viene apagado; que las pruebas pasen no significa que una sesión larga ya no sea lenta. La extracción de memoria es por frases clave (`Decisión:`, `Decidimos…`, `Lección:`), sin modelo. Las capturas 05–12 usan un **modelo simulado**: muestran el cableado del plugin, no la calidad de un LLM real. Las capturas 01–03 son de Hermes Desktop real.
+
+**Memoria entre sesiones.** Verificado en vivo: una decisión guardada en una sesión de Bot Chat vuelve en una sesión nueva distinta (capturas 07 y 08).
+
 **Limitación conocida:** el SDK público de Desktop puede colapsar el razonamiento pero aún no puede ocultar las
 tarjetas de herramientas por sesión, así que esas tarjetas siguen visibles en Bot Chat.
 
 ### Licencia
 MIT. Ver [LICENSE](LICENSE).
-
-## Panteón (optional, generic)
-
-Type `/pantheon` (or `/panteon`) in a Bot Chat. A **coordinator** is the profile you are already talking to; the **gods** are ordinary Hermes profiles with a role, so they show up as rows in the stock Bots panel. Presets (neutral names, no personal data): `daedalus` code · `iris` design · `athena` research · `calliope` writing · `dionysus` games · `nike` QA/review · `mnemosyne` docs.
-
-```
-/pantheon                          # list presets, which profiles exist, who is in the team
-/pantheon show iris                # the role prompt
-/pantheon plan daedalus iris       # dry run + the equivalent `hermes profile create` lines
-/pantheon create daedalus iris confirm   # creates the profiles (cloned from your main profile's config)
-/pantheon team daedalus iris confirm     # writes team.assignees; delegation goes through kanban
-/pantheon team off confirm               # back to single-operator
-```
-
-Nothing is created or changed without the word `confirm`. Existing profiles are never touched. Delegations show up as lines in the status card. Use your own profiles instead of presets by listing their names in `team.assignees`; they just get no preset role line. `panteon.prefix` prepends a prefix to preset profile names; `panteon.roster_in_context: false` drops the roster line.

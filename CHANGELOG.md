@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 - 2026-11-10
+
+Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not pushed, not published.
+
+**New in this cut**
+
+- **Automatic, opt-in panteón.** With the Desktop half on, a Bot Chat request that clearly fits a specialty with no bot gets ONE closing line ("Puedo crear a Daedalus (código) para esto, ¿lo creo?"). On a plain yes the plugin creates the profile (the Desktop half calls the app's stock `profiles.create` / `profiles.configure`; the row appears in the stock Bots panel, titled with the god's name), adds it to `team.assignees` and Hermes hands the request over with `message_agent`; a pending hand-off is reminded at most twice. A no is remembered for 3 days. Optional one-time starter-set suggestion. Never creates without a yes. `/pantheon` stays as an advanced fallback. New module `panteon_auto.py`; `panteon.auto` / `panteon.first_run_suggestion` / `panteon.create_wait_seconds` settings. There is no separate panteón panel.
+- **`message_agent` delegations on the status card** (`dm_delegations.py`): `waiting for reply` from the real `post_tool_call` ack, `done` only when a completion notice naming that teammate carries success evidence (exit code 0); failure → `error`; ambiguous → still waiting. Works on v0.23.0/0.23.1, no core change.
+- **Memory fix:** the Spanish cue `Decisión:` (with accent) was not recognised, so such decisions were never stored (found in the live two-session run). Verified live: a decision saved in one Bot Chat session is injected in a new, separate one.
+- **Public plugin surfaces only (catalog rule 9).** `cron_bridge.py` no longer imports `cron.*` (writes go through the core's `cronjob_manage` tool via `tools.registry`); `context_engine.py` no longer imports `agent.context_compressor` (delegates when reachable, else a small deterministic `LocalCompactor`); profile creation no longer imports `hermes_cli.profiles`. `hermes plugins validate` has no rule-9 warnings and no scanner caution.
+- Desktop half: state labels localized in the card (`libre`, `en cola`, `listo`, …); theme-variable colours (works in light and dark themes); panteón request runner + heartbeat.
+- **Docs:** README EN/ES rewritten (Desktop half must be switched on in Capabilities → Plugins; panteón; memory; card; honest limits), real screenshots 05–12 from Hermes Webapp v0.23.1 (simulated model, stated), `docs/screenshots/README.md`.
+
+**Carried from the 0.3.0-dev cuts (all included)**
+
+- Guard hardening (R13 evasions, A0.7 injection gaps), agentic short-answer style contract, pending-asks reminder after a mid-turn steer, durable delivery with graceful degradation when the core lacks the durable API (B1 detected by capability, also on the #151935 surface), Windows fixes, strict stability tooling (`tools/stability/runner.py`, `r26_audit.py`), cron bridge, optional context engine (**inactive by default**), generic local memory + `/memoria` (alias `/botmemory`), live status card with multi-bot view, status writer fixes, tests against a release-tarball core.
+
+**Honest limits.** Long-session speed is *not* measured (the context engine is off by default; tests prove mechanism and bounds, not latency). The offer depends on the model following an injected instruction. Screenshots 05–12 use a simulated model.
+
 ## 0.3.0-dev (panteón + real-core checks) - 2026-11-10
 
 - **Generic panteón, opt-in.** `/panteon` (es) and `/pantheon` (en): a coordinator (the profile you already talk to) plus specialised sub-bots from neutral presets (`daedalus` code, `iris` design, `athena` research, `calliope` writing, `dionysus` games, `nike` QA, `mnemosyne` docs). `list`, `show`, `plan` are read-only; `create <ids|all> confirm` creates real Hermes profiles cloned from the main profile's config with a role `SOUL.md` (never touches an existing profile); `team <ids> confirm` writes `team.assignees`. Work reaches them through the existing kanban/`team.assignees` flow and shows up as delegation lines in the status card. With preset ids in `team.assignees`, one short roster line is added to the first (full) context note; custom profile names get no invented role. No personal data in the presets (tested).
