@@ -589,7 +589,6 @@ function StatusBar() {
   const s = useValue($bar)
   const panel = useValue($panel)
   const open = useValue($open)
-  const lang = pickLang()
   const model = buildCardModel(panel, lang)
   if (!s.active && !model.visible) return null
   const dot = DOT_COLOR[s.phase] || (model.hasStalled ? DOT_COLOR.waiting_ok : DOT_COLOR.panel)
@@ -656,7 +655,6 @@ function StatusBar() {
 }
 
 function setup(ctx) {
-  const lang = pickLang()
   const ids = new Set()
   let inBotChat = false
   let busy = false
@@ -683,7 +681,7 @@ function setup(ctx) {
   let cardBlocked = ''
 
   function render() {
-    $bar.set(classifyPhase(lang, {
+    $bar.set(classifyPhase(pickLang(), {
       inBotChat, busy, activity, blocked, detail, error, teamWait, notice,
       queued, working, ready, cardBlocked, focusedSession: focused
     }))
@@ -879,7 +877,7 @@ function setup(ctx) {
         working = team.working || ''
         ready = team.ready || {}
         cardBlocked = team.cardBlocked || ''
-        if (tool) activity = labelFor(lang, tool)
+        if (tool) activity = labelFor(pickLang(), tool)
         blocked = false
         detail = ''
         error = ''
@@ -903,7 +901,7 @@ function setup(ctx) {
         blocked = false
         detail = ''
         error = ''
-        activity = labelFor(lang, tool)
+        activity = labelFor(pickLang(), tool)
         render()
       }
     }))

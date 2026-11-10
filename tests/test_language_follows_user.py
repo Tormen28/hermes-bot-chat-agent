@@ -155,6 +155,8 @@ class Pure(unittest.TestCase):
             self.assertGreaterEqual(src.count("\n  " + code), 3, code)  # I18N, TOOL_LABELS, DELEGATION_STATE
         self.assertIn("I18N[src.lang] ? src.lang : ''", src)
         self.assertIn("s.lang || (I18N[lang] ? lang : 'en')", src)
+        self.assertNotIn("const lang = pickLang()", src, "the bar must read the language at use time, not once")
+        self.assertIn("classifyPhase(pickLang(), {", src)
 
 
 if __name__ == "__main__":
