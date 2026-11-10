@@ -121,7 +121,7 @@ def main() -> int:
     say("user", "/memoria")
     say("plugin", memoria(raw_args="", session_id="bot"))
 
-    say("user", "/memory")
+    say("user", "/botmemory")
     listed = memory(raw_args="", session_id="bot")
     say("plugin", listed)
     # pick the first 8-char id from the listing
@@ -136,17 +136,17 @@ def main() -> int:
             break
 
     if mid:
-        say("user", f"/memory edit {mid} Store long-term notes only in the plugin local store (no vault).")
+        say("user", f"/botmemory edit {mid} Store long-term notes only in the plugin local store (no vault).")
         say("plugin", memory(raw_args=f"edit {mid} Store long-term notes only in the plugin local store (no vault).",
                              session_id="bot"))
         say("user", "/memoria")
         say("plugin", memoria(raw_args="", session_id="bot"))
-        say("user", f"/memory forget {mid}")
+        say("user", f"/botmemory forget {mid}")
         say("plugin", memory(raw_args=f"forget {mid}", session_id="bot"))
 
-    say("user", "/memory clear")
+    say("user", "/botmemory clear")
     say("plugin", memory(raw_args="clear", session_id="bot"))
-    say("user", "/memory clear confirm")
+    say("user", "/botmemory clear confirm")
     say("plugin", memory(raw_args="clear confirm", session_id="bot"))
     say("user", "/memoria")
     say("plugin", memoria(raw_args="", session_id="bot"))

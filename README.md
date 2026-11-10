@@ -32,7 +32,7 @@ If you want every detail, open a normal session: it stays exactly as it was.
 | Safety guard (`pre_tool_call`) | **Blocks** risky tool calls (secrets, deletes, destructive git, pushes to protected branches, outbound messages, expensive models, kanban-lock bypasses) and asks you first. Covers both the Bot Chat session and its `delegate_task` / subagent child sessions. It never approves anything. |
 | Team | With no `team.assignees`, Bot Chat does the work itself. With profile names configured, it assigns kanban subcards to those profiles and will not close them until the board shows `done`. |
 | Desktop | A quiet status bar above the composer (`Working… · <step>`, `Waiting for your OK`, `Waiting on <profile>`, `Done · <summary>`, `Error: <short summary>`), and reasoning collapsed by default while a Bot Chat is focused. Tool and approval cards are untouched. |
-| `/memoria` (alias `/memory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. `/memoria` replies in Spanish; `/memory` follows the plugin language (English by default). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
+| `/memoria` (alias `/botmemory`) | Lists what the plugin remembers (long-term entries by type, short-term summary, pending asks), forgets or edits an entry by id, and clears all after confirmation. `/memoria` replies in Spanish; `/botmemory` follows the plugin language (English by default). Registered with the core's `register_command` API; skipped safely if the core does not expose it. |
 | Status panel | A compact, expandable card above the Bot Chat composer (same `COMPOSER_AREAS.top` slot as the Working bar). It shows the active bot and other bots, live delegation lines (`Padre → Hefesto: waiting for reply` → `done` / `listo`), elapsed time, a stalled warning, pending asks, memories recalled this turn, the compact token count, and a `/memoria` hint. Toggle with `status_panel.enabled`. |
 
 Only sessions titled **"Bot Chat"** (the title Hermes Bot Mode uses) and their compaction children get the reply style.
@@ -128,7 +128,7 @@ Any `mcp_*` tool whose name contains send/post/reply/publish/tweet/email is also
 
 **Memory.** Enabled by default and fully local: a rolling extractive summary of earlier turns (tool payloads skipped) plus the pending-asks reminder, and a long-term store of decisions, project state and lessons at `<HERMES_HOME>/bot-chat-agent/memory.db`. `pre_llm_call` injects only the summary and the entries that overlap the current request, each under its token budget. `post_llm_call` writes new entries back when the turn text contains clear cues (`Decision:`, `Lesson learned:`, `Decidimos`, `Lección:`, …) — no model and no network. Secret-like text is not stored. Fail-open: a missing or corrupt store never breaks the turn. Honest limit on Hermes v0.23: this hook can only *add* a bounded memory block; it cannot replace the core's growing `conversation_history`. The optional `context.engine: bot-chat` path includes the same block in `select_context`. Numbers and method: `docs/memory-bench.md`. Turn the feature off with `memory.enabled: false`.
 
-**`/memoria` and `/memory`.** In a Bot Chat session type `/memoria` (Spanish labels) or `/memory` (English by default) to see the long-term store, the rolling summary and any pending asks. Each long-term row has an 8-character id: `/memory forget ab12cd34` drops one entry, `/memory edit ab12cd34 New text` corrects it, `/memory clear` asks for confirmation and `/memory clear confirm` erases every long-term row. Nothing is changed if the id is unknown or the store cannot be opened.
+**`/memoria` and `/botmemory`.** In a Bot Chat session type `/memoria` (Spanish labels) or `/botmemory` (English by default) to see the long-term store, the rolling summary and any pending asks. Each long-term row has an 8-character id: `/botmemory forget ab12cd34` drops one entry, `/botmemory edit ab12cd34 New text` corrects it, `/botmemory clear` asks for confirmation and `/botmemory clear confirm` erases every long-term row. Nothing is changed if the id is unknown or the store cannot be opened.
 
 **Status panel.** The Desktop UI shows an expandable card above the Bot Chat composer (the same `COMPOSER_AREAS.top` slot as the Working / Waiting bar). It lists the active bot and the other bots on the board with their last activity, live delegation lines (`Padre → Hefesto: waiting for reply`, then `done` / `listo` when the result arrives), elapsed time on running tasks, a stalled warning when a task makes no progress past `status_panel.stalled_after_seconds` (default 2 minutes), pending asks, memories recalled this turn, the compact token count, and a hint to type `/memoria`. Idle sessions stay quiet. Switch it off with `status_panel.enabled: false`.
 
@@ -306,3 +306,18 @@ tarjetas de herramientas por sesión, así que esas tarjetas siguen visibles en 
 
 ### Licencia
 MIT. Ver [LICENSE](LICENSE).
+
+## Panteón (optional, generic)
+
+Type `/pantheon` (or `/panteon`) in a Bot Chat. A **coordinator** is the profile you are already talking to; the **gods** are ordinary Hermes profiles with a role, so they show up as rows in the stock Bots panel. Presets (neutral names, no personal data): `daedalus` code · `iris` design · `athena` research · `calliope` writing · `dionysus` games · `nike` QA/review · `mnemosyne` docs.
+
+```
+/pantheon                          # list presets, which profiles exist, who is in the team
+/pantheon show iris                # the role prompt
+/pantheon plan daedalus iris       # dry run + the equivalent `hermes profile create` lines
+/pantheon create daedalus iris confirm   # creates the profiles (cloned from your main profile's config)
+/pantheon team daedalus iris confirm     # writes team.assignees; delegation goes through kanban
+/pantheon team off confirm               # back to single-operator
+```
+
+Nothing is created or changed without the word `confirm`. Existing profiles are never touched. Delegations show up as lines in the status card. Use your own profiles instead of presets by listing their names in `team.assignees`; they just get no preset role line. `panteon.prefix` prepends a prefix to preset profile names; `panteon.roster_in_context: false` drops the roster line.

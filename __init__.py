@@ -40,6 +40,7 @@ import pending_asks as _pending_asks  # noqa: E402
 import bot_chat_memory as _bot_chat_memory  # noqa: E402
 import memory_command as _memory_command  # noqa: E402
 import status_panel as _status_panel  # noqa: E402
+import panteon as _panteon  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,11 @@ DEFAULTS: dict[str, Any] = {
     # plugin API). Off with status_panel.enabled: false. A task with no
     # progress past stalled_after_seconds is marked stalled (default 2 min).
     # Idle turns with nothing to report add no injected text (style budget).
+    # Generic panteón (opt-in): presets of specialised profiles, created only by
+    # `/panteon create ... confirm`. `prefix` is prepended to preset profile names;
+    # `roster_in_context` adds one short "who does what" line when team.assignees
+    # contains preset ids. Custom profile names never get an invented role.
+    "panteon": {"prefix": "", "roster_in_context": True},
     "status_panel": {"enabled": True, "stalled_after_seconds": 120},
     # Fase 3 background work (route A): visible queue per session (plan
     # §6: max 10 open background tasks). The dispatcher of the core
@@ -1002,6 +1008,14 @@ def _build_turn_context(session_id: str, turn_id: str = "",
         force_full=not cfg["incremental_note"], backend=backend,
         budget_tokens=cfg["dynamic_budget_tokens"],
     )
+    try:
+        if _panteon_cfg()["roster_in_context"] and team["assignees"] and dynamic.get("full"):
+            roster = _panteon.roster_line(team["assignees"], lang)
+            if roster and roster not in dynamic["text"]:
+                dynamic["text"] = (dynamic["text"] + "\n" + roster).strip()
+                dynamic["tokens"] = int(dynamic.get("tokens") or 0) + max(1, len(roster) // 4)
+    except Exception as exc:  # the roster is a nicety; never break the turn
+        logger.debug("%s: panteón roster skipped: %s", PLUGIN_ID, exc)
     pending = ""
     pending_items: list[str] = []
     if messages:
@@ -1543,11 +1557,62 @@ def _on_memoria_command(raw_args: str = "", session_id: str = "", **kw: Any) -> 
 
 
 def _on_memory_alias(raw_args: str = "", session_id: str = "", **kw: Any) -> str:
-    return _on_memory_command(raw_args, session_id=session_id, command="memory", **kw)
+    return _on_memory_command(raw_args, session_id=session_id, command="botmemory", **kw)
+
+
+def _panteon_cfg() -> dict[str, Any]:
+    raw = _cfg("panteon")
+    base = {"prefix": "", "roster_in_context": True}
+    if isinstance(raw, dict):
+        base.update({k: raw[k] for k in base if k in raw})
+    base["prefix"] = re.sub(r"[^a-z0-9_-]", "", str(base["prefix"] or "").lower())[:20]
+    return base
+
+
+def _set_team_assignees(names: list[str]) -> bool:
+    """Write ``team.assignees`` into this plugin's settings. False when the core cannot."""
+    if _ctx is None or not hasattr(_ctx, "set_config"):
+        return False
+    try:
+        _ctx.set_config("team.assignees", list(names))
+        return True
+    except Exception as exc:
+        logger.info("%s: set_config(team.assignees) failed: %s", PLUGIN_ID, exc)
+        return False
+
+
+def _on_panteon_command(raw_args: str = "", session_id: str = "", command: str = "", **kw: Any) -> str:
+    """``/panteon``: list, plan, create profiles and set the team. Opt-in, `confirm` to apply."""
+    try:
+        try:
+            team = list(_team().get("assignees") or [])
+        except Exception:
+            team = []
+        cfg = _panteon_cfg()
+        lang = "es" if str(command or kw.get("name") or "").lower().startswith("panteon") else _lang()
+        core_ok = True
+        try:
+            import importlib.util as _iu
+            core_ok = _iu.find_spec("hermes_cli.profiles") is not None
+        except Exception:
+            core_ok = False
+        return _panteon.handle(raw_args or "", lang=lang, prefix=cfg["prefix"], current_team=team,
+                               set_team=_set_team_assignees, core_ok=core_ok)
+    except Exception as exc:
+        logger.debug("%s: /panteon failed: %s", PLUGIN_ID, exc)
+        return f"/panteon failed ({exc}). Nothing was changed."
+
+
+def _on_panteon_es(raw_args: str = "", session_id: str = "", **kw: Any) -> str:
+    return _on_panteon_command(raw_args, session_id=session_id, command="panteon", **kw)
+
+
+def _on_panteon_en(raw_args: str = "", session_id: str = "", **kw: Any) -> str:
+    return _on_panteon_command(raw_args, session_id=session_id, command="pantheon", **kw)
 
 
 def _register_memory_commands(ctx: Any) -> None:
-    """Register /memoria and /memory when the core exposes register_command."""
+    """Register /memoria and /botmemory when the core exposes register_command."""
     if not hasattr(ctx, "register_command"):
         logger.info("%s: register_command unavailable; /memoria disabled", PLUGIN_ID)
         return
@@ -1558,11 +1623,22 @@ def _register_memory_commands(ctx: Any) -> None:
             description="List, edit or forget Bot Chat memories",
             args_hint=hint)
         ctx.register_command(
-            "memory", _on_memory_alias,
+            "botmemory", _on_memory_alias,
             description="List, edit or forget Bot Chat memories",
             args_hint=hint)
     except Exception as exc:
         logger.info("%s: /memoria not registered (%s)", PLUGIN_ID, exc)
+    try:
+        ctx.register_command(
+            "panteon", _on_panteon_es,
+            description="Generic panteón: coordinator + specialised bots (opt-in)",
+            args_hint="[list|show id|plan ids|create ids confirm|team ids confirm]")
+        ctx.register_command(
+            "pantheon", _on_panteon_en,
+            description="Pantheon: coordinator + specialised bots (opt-in)",
+            args_hint="[list|show id|plan ids|create ids confirm|team ids confirm]")
+    except Exception as exc:
+        logger.info("%s: /panteon not registered (%s)", PLUGIN_ID, exc)
 
 
 def register(ctx: Any) -> None:

@@ -1,4 +1,4 @@
-"""In-session slash command ``/memoria`` (alias ``/memory``).
+"""In-session slash command ``/memoria`` (alias ``/botmemory``).
 
 Handler shape for Hermes v0.23: ``fn(raw_args: str) -> str | None``, plus
 any session-context keywords the core actually passes (``session_id``).
@@ -74,14 +74,14 @@ def _msg(lang: str, key: str, **kw: Any) -> str:
         "not_found": "No encontrada: {token}. Nada se cambió." if es else "not found: {token}. Nothing was changed.",
         "ambiguous": "Id ambiguo: {token}. Usa más caracteres." if es else "Ambiguous id: {token}. Use more characters.",
         "need_id": "Indica el id (los 8 caracteres que muestra /memoria)." if es
-                   else "Pass the id (the 8 characters shown by /memory).",
+                   else "Pass the id (the 8 characters shown by /botmemory).",
         "need_text": "Indica el id y el texto nuevo: /memoria editar <id> <texto>." if es
-                     else "Pass the id and the new text: /memory edit <id> <text>.",
+                     else "Pass the id and the new text: /botmemory edit <id> <text>.",
         "forgot": "Olvidada {kind} {sid}." if es else "Forgot {kind} {sid}.",
         "updated": "Actualizada {kind} {sid}." if es else "Updated {kind} {sid}.",
         "confirm": ("Escribe /memoria borrar confirmar para borrar todas las "
                     "memorias largas. No se puede deshacer.") if es
-                   else ("Type /memory clear confirm to erase all long-term "
+                   else ("Type /botmemory clear confirm to erase all long-term "
                          "memories. This cannot be undone."),
         "cleared": "Borradas {n} memorias." if es else "Cleared {n} memories.",
         "empty": "(vacío)" if es else "(empty)",
@@ -96,7 +96,7 @@ def _msg(lang: str, key: str, **kw: Any) -> str:
 def _help(lang: str) -> str:
     if lang == "es":
         return (
-            "/memoria (alias /memory) — lo que el plugin recuerda.\n"
+            "/memoria (alias /botmemory) — lo que el plugin recuerda.\n"
             "  /memoria                listar decisiones, estado, lecciones, resumen y pendientes\n"
             "  /memoria olvidar <id>   olvidar una entrada\n"
             "  /memoria editar <id> <texto>   corregir una entrada\n"
@@ -104,12 +104,12 @@ def _help(lang: str) -> str:
             "  /memoria borrar confirmar   borra toda la memoria larga"
         )
     return (
-        "/memory (alias /memoria) — what the plugin remembers.\n"
-        "  /memory                     list decisions, project state, lessons, summary and pending asks\n"
-        "  /memory forget <id>         forget one entry\n"
-        "  /memory edit <id> <text>    correct one entry\n"
-        "  /memory clear               ask for confirmation\n"
-        "  /memory clear confirm       erase all long-term memories"
+        "/botmemory (alias /memoria) — what the plugin remembers.\n"
+        "  /botmemory                     list decisions, project state, lessons, summary and pending asks\n"
+        "  /botmemory forget <id>         forget one entry\n"
+        "  /botmemory edit <id> <text>    correct one entry\n"
+        "  /botmemory clear               ask for confirmation\n"
+        "  /botmemory clear confirm       erase all long-term memories"
     )
 
 

@@ -1,4 +1,4 @@
-"""Slash command /memoria (alias /memory): list, forget, edit, clear."""
+"""Slash command /memoria (alias /botmemory): list, forget, edit, clear."""
 from __future__ import annotations
 
 import os
@@ -100,7 +100,7 @@ class TestMemoryCommand(unittest.TestCase):
     def test_help_mentions_both_names(self):
         out = self.handle("help")
         self.assertIn("/memoria", out)
-        self.assertIn("/memory", out)
+        self.assertIn("/botmemory", out)
         self.assertIn("forget", out)
         self.assertIn("clear", out)
 
@@ -108,9 +108,10 @@ class TestMemoryCommand(unittest.TestCase):
 class TestCommandRegistration(Base):
     def test_register_exposes_memoria_and_memory_aliases(self):
         self.assertIn("memoria", self.ctx.commands)
-        self.assertIn("memory", self.ctx.commands)
+        self.assertIn("botmemory", self.ctx.commands)
+        self.assertNotIn("memory", self.ctx.commands)  # the core owns /memory
         self.assertTrue(callable(self.ctx.commands["memoria"]))
-        self.assertTrue(callable(self.ctx.commands["memory"]))
+        self.assertTrue(callable(self.ctx.commands["botmemory"]))
 
     def test_hook_path_lists_and_forgets(self):
         home = Path(tempfile.mkdtemp(prefix="bca-memcmd-hook-"))

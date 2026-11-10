@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0-dev (panteón + real-core checks) - 2026-11-10
+
+- **Generic panteón, opt-in.** `/panteon` (es) and `/pantheon` (en): a coordinator (the profile you already talk to) plus specialised sub-bots from neutral presets (`daedalus` code, `iris` design, `athena` research, `calliope` writing, `dionysus` games, `nike` QA, `mnemosyne` docs). `list`, `show`, `plan` are read-only; `create <ids|all> confirm` creates real Hermes profiles cloned from the main profile's config with a role `SOUL.md` (never touches an existing profile); `team <ids> confirm` writes `team.assignees`. Work reaches them through the existing kanban/`team.assignees` flow and shows up as delegation lines in the status card. With preset ids in `team.assignees`, one short roster line is added to the first (full) context note; custom profile names get no invented role. No personal data in the presets (tested).
+- **`/memory` was taken by the core** (v0.23.1 skips the plugin's alias with a warning). The English alias is now `/botmemory`; `/memoria` is unchanged.
+- **Status writer** uses an explicit temp path instead of `mkstemp`+`fdopen`, which the R26 disclosure audit could not attribute (it saw bare file descriptors as writes outside the home).
+- **Tests run against a release tarball** of the core (no git history) and on Linux: `HERMES_AGENT_CHECKOUT` + `HERMES_FASE3B_PYTHON`; `tests/_real_core_load.py` loads the plugin through the real `PluginManager`.
+
 ## 0.3.0-dev (status card) - 2026-11-10
 
 Visible Desktop status card for the Nous hackathon demo, still fail-open and core v0.23 compatible. No publish, no merge to main.
@@ -12,7 +19,7 @@ Visible Desktop status card for the Nous hackathon demo, still fail-open and cor
 
 Nous-hackathon follow-up on `feat/bot-chat-generic-memory`. Still local-only, fail-open, core v0.23 compatible. No publish, no merge to main.
 
-- **Slash command `/memoria`** (alias `/memory`), registered with `ctx.register_command` when the core exposes it (Hermes v0.23 `fn(raw_args) -> str`; extra `session_id` is used if passed). Lists long-term entries by type (with short ids), the rolling session summary and pending asks. `forget`/`olvidar <id>` removes one entry, `edit`/`editar <id> <text>` corrects it (id stays stable), `clear`/`borrar` erases all long-term rows only after `confirm`/`confirmar`. `/memoria` answers in Spanish; `/memory` follows the plugin language (English by default). Readable in chat. If `register_command` is missing, registration is skipped and the rest of the plugin still loads.
+- **Slash command `/memoria`** (alias `/botmemory`), registered with `ctx.register_command` when the core exposes it (Hermes v0.23 `fn(raw_args) -> str`; extra `session_id` is used if passed). Lists long-term entries by type (with short ids), the rolling session summary and pending asks. `forget`/`olvidar <id>` removes one entry, `edit`/`editar <id> <text>` corrects it (id stays stable), `clear`/`borrar` erases all long-term rows only after `confirm`/`confirmar`. `/memoria` answers in Spanish; `/botmemory` follows (the core already owns `/memory`) the plugin language (English by default). Readable in chat. If `register_command` is missing, registration is skipped and the rest of the plugin still loads.
 - **Live status panel.** A compact `[Status]` / `[Estado]` header in `pre_llm_call` when there is something to show (running background tasks, pending asks, memories recalled this turn with short titles, and the compact token count). Idle turns stay silent so the style budget is unchanged. Toggle with `status_panel.enabled` (default on). The Desktop status bar also accepts an optional `panel` suffix (`classifyPhase` / a `bot-chat-status` event) without changing existing phases when the field is absent.
 - Headless demo: `demo/hackathon_demo.py`. Tests: `tests/test_memory_command.py`, `tests/test_status_panel.py`, plus two new desktop cases in `tests/test_fase3_desktop.mjs`.
 

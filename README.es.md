@@ -28,7 +28,7 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 | Guardia de seguridad (`pre_tool_call`) | **Bloquea** acciones riesgosas (secretos, borrados, git destructivo, push a ramas protegidas, mensajes salientes, modelos caros, saltarse el candado del kanban) y te pregunta primero. Cubre tanto el Bot Chat como sus subagentes hijos (`delegate_task`). Nunca aprueba nada por ti. |
 | Equipo | Sin `team.assignees`, el bot trabaja solo. Con nombres de perfiles reales, crea subtareas y no las cierra hasta que el tablero las muestra hechas. |
 | Desktop | Una barra de estado discreta (`Cargando… · <paso>`, `Esperando tu OK`, `Esperando a <perfil>`, `Listo · <resumen>`, `Error: <resumen corto>`) y el razonamiento colapsado por defecto mientras estás en un Bot Chat. |
-| `/memoria` (alias `/memory`) | Lista lo que el plugin recuerda, olvida o edita una entrada por id, y borra todo con confirmación. `/memoria` responde en español. |
+| `/memoria` (alias `/botmemory`) | Lista lo que el plugin recuerda, olvida o edita una entrada por id, y borra todo con confirmación. `/memoria` responde en español. |
 | Panel de estado | Una tarjeta expandable encima del compositor: bot activo y los demás, delegaciones en vivo (`Padre → Hefesto: esperando respuesta` → `listo`), tiempo transcurrido, aviso de *sin avance*, pendientes, memorias recordadas, tokens y una pista de `/memoria`. Se apaga con `status_panel.enabled: false`. |
 
 Solo las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación reciben el estilo de respuesta.
