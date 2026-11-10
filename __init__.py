@@ -36,6 +36,7 @@ import project_card  # noqa: E402
 import context_engine as _context_engine  # noqa: E402
 import guard_rules  # noqa: E402
 import untrusted  # noqa: E402
+import pending_asks as _pending_asks  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -764,7 +765,8 @@ def _load_project_card() -> Optional[project_card.ProjectCard]:
         return None
 
 
-def _build_turn_context(session_id: str, turn_id: str = "") -> dict[str, Any]:
+def _build_turn_context(session_id: str, turn_id: str = "",
+                        messages: Any = None) -> dict[str, Any]:
     """Build this turn's context: stable style + dynamic sections.
 
     Shared by the ``pre_llm_call`` hook and the delegating engine's
@@ -835,8 +837,16 @@ def _build_turn_context(session_id: str, turn_id: str = "") -> dict[str, Any]:
         force_full=not cfg["incremental_note"], backend=backend,
         budget_tokens=cfg["dynamic_budget_tokens"],
     )
+    pending = ""
+    if messages:
+        try:
+            pending = _pending_asks.render(
+                _pending_asks.pending_for_turn(session_id or "", messages), lang)
+        except Exception as exc:  # never break the turn for a reminder
+            logger.debug("%s: pending asks skipped: %s", PLUGIN_ID, exc)
     return {
         "stable": stable,
+        "pending": pending,
         "dynamic": dynamic["text"],
         "tokens": dynamic["tokens"],
         "dropped": dynamic["dropped"],
@@ -889,7 +899,8 @@ def _session_id_for_key(session_key: str) -> str:
 
 
 # ---------------------------------------------------------------- hooks
-def _on_pre_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> Optional[dict]:
+def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
+                     conversation_history: Any = None, **_: Any) -> Optional[dict]:
     """Fase 2: stable style + bounded dynamic sections (or nothing).
 
     When the delegating engine is active for this session it supplies
@@ -903,7 +914,8 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> Optio
     if _context_engine.is_engine_active(session_id or ""):
         return None
     try:
-        built = _build_turn_context(session_id or "", turn_id or "")
+        built = _build_turn_context(session_id or "", turn_id or "",
+                                    messages=conversation_history)
     except Exception as exc:
         logger.debug("%s: team note skipped: %s", PLUGIN_ID, exc)
         return None
@@ -911,7 +923,8 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "", **_: Any) -> Optio
         logger.warning("%s: dynamic context over budget (dropped: %s)",
                        PLUGIN_ID, ", ".join(built["dropped"]) or "none")
     note = _untrusted_note(session_id or "")
-    text = "\n\n".join(part for part in (built["stable"], built["dynamic"], note) if part.strip())
+    text = "\n\n".join(part for part in (built["stable"], built["dynamic"],
+                                           built.get("pending", ""), note) if part.strip())
     if not text.strip():
         return None
     return {"context": text}

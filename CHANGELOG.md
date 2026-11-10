@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0-dev (pending asks) - 2026-11-09
+
+- **Interrupted asks are no longer dropped.** Live test finding: a second user message delivered mid-turn (core steer, `[OUT-OF-BAND USER MESSAGE]`) made the model switch topic and never answer the first ask. New `pending_asks.py`: `pre_llm_call` scans the recent tail of `conversation_history` for earlier real user asks followed by another user message with no final assistant reply, and adds a `[Pending asks]` / `[Pendientes]` block (max 3 asks, 160 chars each, each ask reminded at most twice per session). Pure, fail-open, no I/O. Hook path only (the delegating engine passes no history). `tests/test_pending_asks.py`.
+
 ## 0.3.0-dev (hardening) - 2026-11-09
 
 Audit follow-up on the installed 0.3.0-dev (fase5 snapshot `e3b4f60`). No change to the Nous catalog, `main` or PR #3.
