@@ -31,6 +31,7 @@ import delivery_store  # noqa: E402
 import background_tasks as _background_tasks  # noqa: E402
 import scheduled_tasks as _scheduled_tasks  # noqa: E402
 import context_budget  # noqa: E402
+import dbscope  # noqa: E402
 import context_sections  # noqa: E402
 import project_card  # noqa: E402
 import context_engine as _context_engine  # noqa: E402
@@ -1081,6 +1082,13 @@ def _load_project_card() -> Optional[project_card.ProjectCard]:
 
 def _build_turn_context(session_id: str, turn_id: str = "",
                         messages: Any = None) -> dict[str, Any]:
+    """Build this turn's context inside one SQLite connection scope (see ``dbscope``)."""
+    with dbscope.turn_scope():
+        return _build_turn_context_impl(session_id, turn_id, messages)
+
+
+def _build_turn_context_impl(session_id: str, turn_id: str = "",
+                             messages: Any = None) -> dict[str, Any]:
     """Build this turn's context: stable style + dynamic sections.
 
     Shared by the ``pre_llm_call`` hook and the delegating engine's
@@ -1282,7 +1290,17 @@ def _panteon_auto_context(session_id: str, user_message: Any) -> str:
 
 def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
                      conversation_history: Any = None, user_message: Any = None,
-                     **_: Any) -> Optional[dict]:
+                     **kw: Any) -> Optional[dict]:
+    """Hook entry: runs the turn inside one SQLite connection scope (latency)."""
+    with dbscope.turn_scope():
+        return _pre_llm_call_impl(session_id=session_id, turn_id=turn_id,
+                                  conversation_history=conversation_history,
+                                  user_message=user_message, **kw)
+
+
+def _pre_llm_call_impl(session_id: str = "", turn_id: str = "",
+                       conversation_history: Any = None, user_message: Any = None,
+                       **_: Any) -> Optional[dict]:
     """Fase 2: stable style + bounded dynamic sections (or nothing).
 
     When the delegating engine is active for this session it supplies
@@ -1329,6 +1347,16 @@ def _on_pre_llm_call(session_id: str = "", turn_id: str = "",
 def _on_post_llm_call(session_id: str = "", turn_id: str = "",
                       conversation_history: Any = None,
                       final_response: str = "", **kw: Any) -> None:
+    """Hook entry: one SQLite connection scope for the whole confirm + write-back."""
+    with dbscope.turn_scope():
+        return _post_llm_call_impl(session_id=session_id, turn_id=turn_id,
+                                   conversation_history=conversation_history,
+                                   final_response=final_response, **kw)
+
+
+def _post_llm_call_impl(session_id: str = "", turn_id: str = "",
+                        conversation_history: Any = None,
+                        final_response: str = "", **kw: Any) -> None:
     """Confirm this turn's offered deliveries (only after the turn generated).
 
     ``post_llm_call`` does not fire on interrupted turns (core:

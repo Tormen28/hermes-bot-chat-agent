@@ -58,6 +58,8 @@ import time
 import uuid
 from contextlib import closing
 from pathlib import Path
+
+import dbscope
 from typing import Any, Optional
 
 SCHEMA_VERSION = 4
@@ -336,36 +338,54 @@ class DeliveryStore:
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         last: Optional[BaseException] = None
-        for attempt in range(MAX_RETRIES + 1):
+
+        def _connect(path: Any, factory: Any) -> sqlite3.Connection:
+            kw = {"factory": factory} if factory is not None else {}
             conn = sqlite3.connect(
-                self.path, timeout=BUSY_TIMEOUT_MS / 1000.0, isolation_level=None
-            )
+                path, timeout=BUSY_TIMEOUT_MS / 1000.0, isolation_level=None, **kw)
             conn.row_factory = sqlite3.Row
+            return conn
+
+        def _setup(conn: sqlite3.Connection) -> None:
+            conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = FULL")
+            # The schema step only runs when the stored version differs: on every
+            # other connect it used to execute the whole script and write the
+            # meta row again (a write transaction, i.e. an fsync, per connection).
             try:
-                conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-                conn.execute("PRAGMA journal_mode = WAL")
-                conn.execute("PRAGMA synchronous = FULL")
-                conn.executescript(_SCHEMA_SQL)
-                conn.execute(
-                    "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
-                    (str(SCHEMA_VERSION),),
-                )
-                # Migrated databases keep their old version row without
-                # this: the version must say what schema is actually on
-                # disk after the CREATE TABLE IF NOT EXISTS above ran.
-                conn.execute(
-                    "UPDATE meta SET value = ? WHERE key = 'schema_version'",
-                    (str(SCHEMA_VERSION),),
-                )
+                row = conn.execute(
+                    "SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+                current = str(row[0]) if row is not None else ""
+            except sqlite3.OperationalError:  # no meta table yet (fresh file)
+                current = ""
+            if current == str(SCHEMA_VERSION):
+                return
+            conn.executescript(_SCHEMA_SQL)
+            conn.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+            # Migrated databases keep their old version row without
+            # this: the version must say what schema is actually on
+            # disk after the CREATE TABLE IF NOT EXISTS above ran.
+            conn.execute(
+                "UPDATE meta SET value = ? WHERE key = 'schema_version'",
+                (str(SCHEMA_VERSION),),
+            )
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                # Inside a ``dbscope.turn_scope()`` this returns the turn's one
+                # connection (its close() is a no-op); outside it opens a new one.
+                return dbscope.open_conn(self.path, _connect, _setup)
             except Exception as exc:  # noqa: BLE001 - retried selectively below
-                conn.close()
                 last = exc
                 if _is_busy(exc) and attempt < MAX_RETRIES:
                     delay = min(0.05 * (2 ** attempt), 0.5) + random.uniform(0, 0.05)
                     time.sleep(delay)
                     continue
                 raise
-            return conn
         assert last is not None  # pragma: no cover - loop always raises or returns
         raise last
 

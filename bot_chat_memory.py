@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import context_budget
+import dbscope
 
 try:
     from untrusted import neutralize as _neutralize
@@ -129,6 +130,8 @@ CREATE TABLE IF NOT EXISTS session_summary (
   updated_at REAL NOT NULL
 );
 """
+
+_SCHEMA_VERSION = 1
 
 _STOP = {
     "the", "and", "for", "of", "is", "in", "it", "to", "we", "you", "a",
@@ -286,18 +289,32 @@ class MemoryStore:
 
     def _conn(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        for attempt in (0, 1):
-            conn = sqlite3.connect(self.path, timeout=5.0)
-            try:
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA busy_timeout = 5000")
-                conn.execute("PRAGMA journal_mode = WAL")
+
+        def _connect(path: Any, factory: Any) -> sqlite3.Connection:
+            kw = {"factory": factory} if factory is not None else {}
+            return sqlite3.connect(path, timeout=5.0, **kw)
+
+        def _setup(conn: sqlite3.Connection) -> None:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000")
+            conn.execute("PRAGMA journal_mode = WAL")
+            # Memory is rebuilt from the conversation and a lost last commit after a
+            # power cut is harmless: WAL + NORMAL never corrupts and skips one fsync
+            # per commit (~2 ms each on Windows, several commits per turn).
+            conn.execute("PRAGMA synchronous = NORMAL")
+            # The schema script only runs once per database file (user_version),
+            # not on every connection.
+            if conn.execute("PRAGMA user_version").fetchone()[0] != _SCHEMA_VERSION:
                 conn.executescript(_SCHEMA)
-                return conn
+                conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+
+        for attempt in (0, 1):
+            try:
+                return dbscope.open_conn(self.path, _connect, _setup)
             except sqlite3.DatabaseError as exc:
-                conn.close()
                 corrupt = any(m in str(exc).lower() for m in self._CORRUPT_MARKERS)
                 if attempt == 0 and corrupt:
+                    dbscope.forget(self.path)
                     self._quarantine()
                     continue
                 raise
