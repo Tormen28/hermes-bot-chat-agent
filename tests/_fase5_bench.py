@@ -641,9 +641,11 @@ def recovery_after_kill9():
         journal = env.home / "journal.txt"
         proc = subprocess.Popen(
             [sys.executable, "-c",
-             "import sys; sys.path.insert(0, %r); "
-             "from tests._fase5_bench import _crash_writer; "
-             "_crash_writer(%r, %r, 500)" % (str(ROOT), str(path), str(journal))],
+             # tests/ is not a package: import by file location so a core checkout on
+             # PYTHONPATH (which ships its own ``tests`` package) cannot shadow it.
+             "import sys; sys.path.insert(0, %r); sys.path.insert(0, %r); "
+             "from _fase5_bench import _crash_writer; "
+             "_crash_writer(%r, %r, 500)" % (str(ROOT), str(ROOT / "tests"), str(path), str(journal))],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.4)
         proc.send_signal(signal.SIGKILL)
