@@ -2,6 +2,8 @@
 
 **English** · [Español](#español)
 
+![Hermes Bots](img/hermes-bots.jpg)
+
 > A calmer, simpler Hermes Bot Chat for people who just want answers.
 
 ## Why this exists
@@ -124,6 +126,8 @@ MIT. See [LICENSE](LICENSE).
 ---
 
 ## Español
+
+![Hermes Bots](img/hermes-bots.jpg)
 
 > Un Bot Chat de Hermes más tranquilo y simple, para quien solo quiere respuestas.
 
