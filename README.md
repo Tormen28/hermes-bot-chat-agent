@@ -6,7 +6,7 @@
 
 > A calmer, simpler Hermes Bot Chat for people who just want answers.
 
-**0.3.0-dev** on this branch is a private/test cut for a personal Hermes. It is not the Nous catalog release. Installing `Tormen28/hermes-bot-chat-agent` without a pin follows `main` (0.2.0) until this is reviewed and merged. To try this cut, install from a checkout of the branch.
+**0.3.0** is the current release: 0.2.0 plus real delegation, the kanban lock and the desktop states. Installing `Tormen28/hermes-bot-chat-agent` follows `main`, which is this version.
 
 ## Why this exists
 

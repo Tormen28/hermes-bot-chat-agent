@@ -31,7 +31,7 @@ Hermes por debajo. Si quieres ver todo el detalle, abre una sesión normal: qued
 
 Solo las sesiones llamadas **"Bot Chat"** (el título que usa el Modo Bot de Hermes) y sus hijas de compactación reciben el estilo de respuesta.
 La guardia de seguridad también protege las sesiones hijas `delegate_task` / subagentes lanzadas desde un Bot Chat (heredan la protección del Bot Chat padre). Las sesiones normales y sus subagentes siguen igual. El trabajador kanban del perfil asignado queda fuera de esa guardia, así que puede entregar su tarjeta.
-**0.3.0-dev** en esta rama es un corte privado de prueba, no la publicación del catálogo de Nous. Sin `team.gods` el bot trabaja solo. Con nombres de perfiles, espera a que el tablero marque la tarjeta como hecha. `relaxed` mantiene el candado del kanban y apaga esa espera. La guía completa está en [README.md](README.md).
+**0.3.0** es la versión actual: la 0.2.0 más delegación real, el candado del kanban y los estados de escritorio. Instalar `Tormen28/hermes-bot-chat-agent` sigue `main`, que es esta versión.
 
 ## Instalar
 
