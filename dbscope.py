@@ -97,6 +97,12 @@ def open_conn(path: Any, connect: Callable[[Any, Any], sqlite3.Connection],
     return conn
 
 
+def has_conn(path: Any) -> bool:
+    """True when the current scope already holds a connection for ``path``."""
+    conns = getattr(_local, "conns", None)
+    return bool(conns) and _key(path) in conns
+
+
 def forget(path: Any) -> None:
     """Really close the scoped connection of ``path`` (e.g. before the file is moved aside)."""
     conns = getattr(_local, "conns", None)

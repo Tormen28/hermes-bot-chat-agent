@@ -412,8 +412,9 @@ def write_snapshot(path: Path | str, payload: dict[str, Any] | None) -> bool:
         try:
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(data)
-                fh.flush()
-                os.fsync(fh.fileno())
+            # No fsync: status.json is a regenerable UI snapshot rewritten every turn;
+            # the temp-file + os.replace keeps readers from ever seeing a partial file
+            # (fsync cost ~1-3 ms per turn on Windows for no benefit).
             os.replace(tmp, dest)
         except Exception:
             try:

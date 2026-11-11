@@ -288,9 +288,8 @@ class MemoryStore:
                     pass
 
     def _conn(self) -> sqlite3.Connection:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-
         def _connect(path: Any, factory: Any) -> sqlite3.Connection:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             kw = {"factory": factory} if factory is not None else {}
             return sqlite3.connect(path, timeout=5.0, **kw)
 

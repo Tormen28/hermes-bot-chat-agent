@@ -336,10 +336,11 @@ class DeliveryStore:
         this retry that error escaped ``_write`` (which only retries after
         the connection is open) and killed the consumer mid-gate.
         """
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         last: Optional[BaseException] = None
 
         def _connect(path: Any, factory: Any) -> sqlite3.Connection:
+            # Only a fresh connection needs the directory (a scoped, reused one has it).
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             kw = {"factory": factory} if factory is not None else {}
             conn = sqlite3.connect(
                 path, timeout=BUSY_TIMEOUT_MS / 1000.0, isolation_level=None, **kw)
@@ -421,7 +422,7 @@ class DeliveryStore:
         raise last
 
     def _read(self, fn: Any) -> Any:
-        if not self.path.is_file():
+        if not dbscope.has_conn(self.path) and not self.path.is_file():
             return fn(None)
         with closing(self._conn()) as conn:
             return fn(conn)
