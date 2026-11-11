@@ -2,6 +2,8 @@
 
 **English** · [Español](#español)
 
+![Hermes Bots](docs/img/hermes-bots.jpg)
+
 > A calmer, simpler Hermes Bot Chat for people who just want answers.
 
 **0.3.0-dev** on this branch is a private/test cut for a personal Hermes. It is not the Nous catalog release. Installing `Tormen28/hermes-bot-chat-agent` without a pin follows `main` (0.2.0) until this is reviewed and merged. To try this cut, install from a checkout of the branch.
@@ -166,6 +168,8 @@ MIT. See [LICENSE](LICENSE).
 ---
 
 ## Español
+
+![Hermes Bots](docs/img/hermes-bots.jpg)
 
 > Un Bot Chat de Hermes más tranquilo y simple, para quien solo quiere respuestas.
 
