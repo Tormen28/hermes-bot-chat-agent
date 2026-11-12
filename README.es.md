@@ -1,5 +1,7 @@
 # Hermes Bots para Hermes
 
+![Hermes Bots](docs/img/hermes-bots.jpg)
+
 ![Hermes Bots 0.3.0: memoria, tarjeta de estado y un panteón opcional de bots especialistas](docs/hermes-bots-030-nous.jpg)
 
 > Nombre visible **Hermes Bots** · el id y la carpeta del plugin siguen siendo `bot-chat-agent` (para que instalar y actualizar no se rompa).
