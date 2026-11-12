@@ -4,7 +4,7 @@
 
 **Public name: Hermes Bots.** The display name (`label` in plugin.yaml, Desktop plugin name, README headings, catalog title) is now "Hermes Bots", with a new cover `docs/hermes-bots-030-nous.jpg`. The plugin id and folder remain `bot-chat-agent`, so existing installs, config keys and `hermes plugins update` keep working.
 
-Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not pushed, not published.
+Unified release (everything since the 0.2.0 pin `2bc1ba3`). Published: `main` is this version and the catalog pins `0.3.0 @ 76e83e83`.
 
 **New in this cut**
 
@@ -37,7 +37,7 @@ Unified release (everything since the 0.2.0 pin `2bc1ba3`). Box-only build; not 
 
 **Found by the full simulated new-user test (fixed, with tests)**
 
-- Install docs: `hermes plugins install /path` does not work on Hermes v0.23 (read as `owner/repo`); README now says `file://` / GitHub shorthand / `--force`, and that the catalog pin may still be 0.2.0.
+- Install docs: `hermes plugins install /path` does not work on Hermes v0.23 (read as `owner/repo`); README now says `file://` / GitHub shorthand / `--force`. The catalog pin is now `0.3.0`.
 - **Context engine never compacted.** `update_model()` ran before the lazy compactor existed, so it got `context_length=0` (threshold 0). On a 300-turn run the history grew to 600 messages (~105k tokens on a 64k model). Now the window is remembered. (Engine is still off by default.)
 - Memory: `Remember that…` / `Recuerda que…` / `From now on…` (user words only) and fr/pt/de decision cues are stored; an unreadable `memory.db` is moved aside and recreated instead of silently disabling memory forever.
 - Status card: a finished delegation stops its clock (it read "done 20m 1s" and kept growing) and leaves the card after 15 min (failures after 1 h).

@@ -6,8 +6,6 @@
 
 **English** · [Español](#español)
 
-![Hermes Bots](docs/img/hermes-bots.jpg)
-
 > A calmer, simpler Hermes Bot Chat for people who just want answers, with a memory, a status card and a team of specialists that appear only when you say yes.
 
 **0.3.0** adds, on top of 0.2.0 (style, guard, status bar): a hardened guard, pending-ask reminders, local short-term and long-term memory (`/memoria`), durable background delivery, a live status card with multi-bot delegations, an *automatic but opt-in* panteón of specialist bots inside the stock **Bots** panel, a cron bridge, and an optional (off by default) context engine.
