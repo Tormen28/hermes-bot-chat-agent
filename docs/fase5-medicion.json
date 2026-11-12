@@ -1,0 +1,348 @@
+{
+  "runtime": "offline, esta VM (Linux)",
+  "python": "3.14.9",
+  "routes": [
+    {
+      "route": "ack/hot",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 4.377,
+      "p95_ms": 4.898,
+      "min_ms": 4.219,
+      "max_ms": 18.539,
+      "mean_ms": 4.576,
+      "stdev_ms": 1.165
+    },
+    {
+      "route": "ack/cold",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 4.816,
+      "p95_ms": 6.144,
+      "min_ms": 4.428,
+      "max_ms": 12.837,
+      "mean_ms": 5.046,
+      "stdev_ms": 0.956
+    },
+    {
+      "route": "ttft/pre_llm_hot",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 8.876,
+      "p95_ms": 9.53,
+      "min_ms": 8.669,
+      "max_ms": 20.891,
+      "mean_ms": 9.042,
+      "stdev_ms": 0.922
+    },
+    {
+      "route": "ttft/pre_llm_hot_pending",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 10.984,
+      "p95_ms": 12.185,
+      "min_ms": 9.456,
+      "max_ms": 13.108,
+      "mean_ms": 10.973,
+      "stdev_ms": 0.844
+    },
+    {
+      "route": "ttft/pre_llm_cold",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 11.964,
+      "p95_ms": 14.013,
+      "min_ms": 11.642,
+      "max_ms": 20.136,
+      "mean_ms": 12.305,
+      "stdev_ms": 1.287
+    },
+    {
+      "route": "delivery/post_llm",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 8.555,
+      "p95_ms": 9.851,
+      "min_ms": 7.247,
+      "max_ms": 10.432,
+      "mean_ms": 8.632,
+      "stdev_ms": 0.755
+    },
+    {
+      "route": "interrupt/agent_loop_stopped",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 8.431,
+      "p95_ms": 8.875,
+      "min_ms": 7.738,
+      "max_ms": 11.47,
+      "mean_ms": 8.404,
+      "stdev_ms": 0.419
+    },
+    {
+      "route": "hook/claimed",
+      "n": 100,
+      "failures": 0,
+      "p50_ms": 2.403,
+      "p95_ms": 2.521,
+      "min_ms": 2.325,
+      "max_ms": 2.932,
+      "mean_ms": 2.413,
+      "stdev_ms": 0.077
+    },
+    {
+      "route": "hook/spawned",
+      "n": 100,
+      "failures": 0,
+      "p50_ms": 1.367,
+      "p95_ms": 1.49,
+      "min_ms": 1.323,
+      "max_ms": 1.723,
+      "mean_ms": 1.383,
+      "stdev_ms": 0.06
+    },
+    {
+      "route": "hook/completed",
+      "n": 100,
+      "failures": 0,
+      "p50_ms": 4.785,
+      "p95_ms": 4.999,
+      "min_ms": 4.621,
+      "max_ms": 6.308,
+      "mean_ms": 4.834,
+      "stdev_ms": 0.23
+    },
+    {
+      "route": "hook/blocked",
+      "n": 100,
+      "failures": 0,
+      "p50_ms": 5.796,
+      "p95_ms": 6.305,
+      "min_ms": 5.612,
+      "max_ms": 6.9,
+      "mean_ms": 5.859,
+      "stdev_ms": 0.239
+    },
+    {
+      "route": "tools/guard_allow",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 0.12,
+      "p95_ms": 0.186,
+      "min_ms": 0.113,
+      "max_ms": 0.641,
+      "mean_ms": 0.133,
+      "stdev_ms": 0.043
+    },
+    {
+      "route": "tools/guard_block",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 0.012,
+      "p95_ms": 0.012,
+      "min_ms": 0.011,
+      "max_ms": 0.048,
+      "mean_ms": 0.013,
+      "stdev_ms": 0.004
+    },
+    {
+      "route": "tools/post_tool",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 4.828,
+      "p95_ms": 5.564,
+      "min_ms": 4.576,
+      "max_ms": 8.354,
+      "mean_ms": 4.918,
+      "stdev_ms": 0.359
+    },
+    {
+      "route": "handoff/record_to_offer",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 2.754,
+      "p95_ms": 3.108,
+      "min_ms": 2.614,
+      "max_ms": 6.511,
+      "mean_ms": 2.842,
+      "stdev_ms": 0.4
+    },
+    {
+      "route": "delivery/offer_to_confirm",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 2.848,
+      "p95_ms": 3.285,
+      "min_ms": 2.702,
+      "max_ms": 5.337,
+      "mean_ms": 2.911,
+      "stdev_ms": 0.252
+    },
+    {
+      "route": "delivery/relay_claim_confirm",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 2.878,
+      "p95_ms": 3.162,
+      "min_ms": 2.726,
+      "max_ms": 3.916,
+      "mean_ms": 2.905,
+      "stdev_ms": 0.149
+    },
+    {
+      "route": "handoff/offer_1000_pending",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 12.405,
+      "p95_ms": 13.781,
+      "min_ms": 10.65,
+      "max_ms": 21.795,
+      "mean_ms": 12.617,
+      "stdev_ms": 0.859
+    },
+    {
+      "route": "queue/can_launch_empty",
+      "n": 10,
+      "failures": 0,
+      "p50_ms": 0.017,
+      "p95_ms": 0.029,
+      "min_ms": 0.015,
+      "max_ms": 0.036,
+      "mean_ms": 0.019,
+      "stdev_ms": 0.006
+    },
+    {
+      "route": "queue/can_launch_9",
+      "n": 10,
+      "failures": 0,
+      "p50_ms": 2.108,
+      "p95_ms": 2.505,
+      "min_ms": 2.079,
+      "max_ms": 2.782,
+      "mean_ms": 2.179,
+      "stdev_ms": 0.203
+    },
+    {
+      "route": "queue/can_launch_full",
+      "n": 10,
+      "failures": 0,
+      "p50_ms": 2.118,
+      "p95_ms": 2.192,
+      "min_ms": 2.061,
+      "max_ms": 2.199,
+      "mean_ms": 2.122,
+      "stdev_ms": 0.049
+    },
+    {
+      "route": "queue/launch_rejected",
+      "n": 10,
+      "failures": 0,
+      "p50_ms": 2.114,
+      "p95_ms": 2.185,
+      "min_ms": 2.057,
+      "max_ms": 2.208,
+      "mean_ms": 2.117,
+      "stdev_ms": 0.04
+    }
+  ],
+  "long_sessions": {
+    "route": "long_sessions/10x100_turns",
+    "sequences": 10,
+    "turns_per_sequence": 100,
+    "pre": {
+      "route": "long_sessions/pre_llm_call",
+      "n": 1000,
+      "failures": 0,
+      "p50_ms": 9.908,
+      "p95_ms": 12.181,
+      "min_ms": 8.796,
+      "max_ms": 23.254,
+      "mean_ms": 10.264,
+      "stdev_ms": 1.455
+    },
+    "post": {
+      "route": "long_sessions/post_llm_call_or_stopped",
+      "n": 1000,
+      "failures": 0,
+      "p50_ms": 4.938,
+      "p95_ms": 6.081,
+      "min_ms": 4.406,
+      "max_ms": 20.13,
+      "mean_ms": 5.075,
+      "stdev_ms": 0.805
+    },
+    "budget_checks": 100,
+    "budget_violations": 0,
+    "slope_last_vs_first_decile_p50": 1.05,
+    "accounting": {
+      "s1": {
+        "recorded": 50,
+        "delivered": 50,
+        "lost": 0,
+        "duplicates": 0,
+        "pending": 0,
+        "offered_left": 0,
+        "by_status": {
+          "delivered_in_turn": 50
+        }
+      },
+      "s2": {
+        "recorded": 50,
+        "delivered": 50,
+        "lost": 0,
+        "duplicates": 0,
+        "pending": 0,
+        "offered_left": 0,
+        "by_status": {
+          "delivered_in_turn": 50
+        }
+      }
+    }
+  },
+  "low_resources": {
+    "loaded": {
+      "pre_p95_ms": 8.653,
+      "base_pre_p95_ms": 9.986,
+      "ratio": 0.87,
+      "lost": 0
+    },
+    "cpu_contention": {
+      "pre_p95_ms": 67.154,
+      "lost": 0
+    }
+  },
+  "errors": {
+    "corrupt_pre_ms": 4.002,
+    "corrupt_pre_returned": true,
+    "row_survived_corrupt": true,
+    "locked_wait_ms": 331.185,
+    "present": true
+  },
+  "recovery": {
+    "route": "recovery/kill9_reopen_integrity",
+    "reopen_ms": 1.973,
+    "integrity": "ok",
+    "journaled": 52,
+    "lost": 0,
+    "present": 52
+  },
+  "bar": {
+    "js": {
+      "route": "bar/js_pure",
+      "n": 200,
+      "failures": 0,
+      "p50_ms": 0.006,
+      "p95_ms": 0.02,
+      "min_ms": 0.003,
+      "max_ms": 0.575,
+      "mean_ms": 0.01,
+      "stdev_ms": 0.041
+    },
+    "persist_p95_ms": 3.108
+  },
+  "suites": {
+    "battery": "215 tests, 210 OK + 5 FAIL (los 5 de A0.7, esperados) en Python 3.14.9 y en Python 3.12.3 (verificado aparte en ambos runtimes)",
+    "node": "exit 0",
+    "gates": "1a 9/9, 1b 17/17, 2 16/16, 3 23/23, 3b 17/17, 4 31/31, 5 15/15 — todas dentro de la batería: los únicos 5 fallos son de A0.7, así que ninguna puerta falló"
+  }
+}

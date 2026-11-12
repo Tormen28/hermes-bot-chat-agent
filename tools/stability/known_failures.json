@@ -1,0 +1,1 @@
+{"_comment": "Expected failing test ids per platform (empty = none). min_passed calibrated from real full-suite runs on 2026-11-09: Windows 250 passed + 7 skipped (with fase3b gate); Linux 238 passed without fase3b.", "posix": {"failed": [], "min_passed": 230}, "windows": {"failed": [], "min_passed": 245}}

@@ -33,12 +33,18 @@ class FakeCtx:
     def __init__(self, cfg=None):
         self.cfg = cfg or {}
         self.hooks = {}
+        self.commands = {}
 
     def get_config(self, key, default=None):
         return self.cfg.get(key, default)
 
     def register_hook(self, name, fn):
         self.hooks[name] = fn
+
+    def register_command(self, name, handler, description="", args_hint="", **k):
+        clean = str(name or "").lower().strip().lstrip("/")
+        if clean:
+            self.commands[clean] = handler
 
 
 def make_db(rows):
@@ -54,6 +60,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         bca._cache.clear()
         bca._questions.clear()
+        bca._reset_language_state()
         self.ctx = FakeCtx()
         bca.register(self.ctx)
         self.db = make_db([
@@ -310,12 +317,25 @@ assert.strictEqual(classifyPhase('en', { inBotChat: false, notice: 'Ship the pat
 const created = applyTeamEvent({ teamWait: '', notice: 'old' }, 'tool', { name: 'kanban_create', assignee: 'researcher' });
 assert.strictEqual(created.teamWait, 'researcher');
 assert.strictEqual(created.notice, '');
-const done = applyTeamEvent({ teamWait: 'researcher', notice: '' }, 'kanban_task_completed', { assignee: 'researcher', summary: 'Ship the patch' });
+const done = applyTeamEvent({ teamWait: 'researcher', notice: '' }, 'kanban_task_completed', { task_id: 't-1', assignee: 'researcher', summary: 'Ship the patch', session_id: 's1' });
 assert.strictEqual(done.teamWait, '');
-assert.strictEqual(done.notice, 'Ship the patch');
+assert.deepStrictEqual(done.ready, { s1: ['t-1'] });
+assert.strictEqual(done.notice, '');
+// Fase 3: completed feeds the ready badge (dedup by task id), not a Done notice.
+assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: false, ready: { s1: ['t-1'] }, focusedSession: 's1' }), { active: true, phase: 'ready', blocked: false, text: '1 resultado listo' });
+assert.deepStrictEqual(classifyPhase('es', { inBotChat: true, busy: true, ready: { s1: ['t-1'] }, focusedSession: 's1', activity: 'Reading files' }), { active: true, phase: 'working', blocked: false, text: 'Cargando… · Reading files' });
+const queued = applyTeamEvent({ teamWait: '', notice: '' }, 'kanban_task_claimed', { task_id: 't-2', assignee: 'researcher' });
+assert.strictEqual(queued.queued, 'researcher');
+assert.deepStrictEqual(classifyPhase('en', { inBotChat: true, busy: false, queued: 'researcher' }), { active: true, phase: 'queued', blocked: false, text: 'Queued · researcher' });
 console.log('NODE_OK');
 """
-        proc = subprocess.run([node, "-e", harness], capture_output=True, text=True, timeout=5)
+        # Run from a temp file: the whole desktop/plugin.js inline exceeds the Windows
+        # command-line limit (WinError 206) when passed with `node -e`.
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="bca-node-") as td:
+            script = Path(td) / "phase_logic.cjs"
+            script.write_text(harness, encoding="utf-8")
+            proc = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("NODE_OK", proc.stdout)
 
@@ -332,7 +352,7 @@ class TestPackaging(unittest.TestCase):
         self.assertRegex(y, r'requires_hermes:\s*">=0\.22\.5"')
         for h in ("pre_llm_call", "pre_tool_call", "post_tool_call", "kanban_task_completed"):
             self.assertIn(h, y)
-        self.assertRegex(y, r"version:\s*0\.3\.0-dev")
+        self.assertRegex(y, r"version:\s*0\.3\.0\b")
 
 
 if __name__ == "__main__":

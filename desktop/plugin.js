@@ -1,5 +1,10 @@
 // Bot Chat Agent - Desktop layer. Uses only the public plugin SDK (no direct page access, no injected styles).
 // Scope: only the canonical "Bot Chat" session(s) reported by profiles.list.
+// Fase 3: the bar also tracks kanban lifecycle events (claimed/spawned/
+// completed/blocked) and shows "N results ready" with no turn active.
+// Limit (Q5): the SDK cannot read the delivery outbox, so the badge only
+// covers completions observed while the desktop app was running; it
+// resets on reload and the next turn in the session re-announces them.
 import { atom, COMPOSER_AREAS, host, useValue } from '@hermes/plugin-sdk'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
@@ -13,7 +18,26 @@ const I18N = {
     blocked: 'Waiting for your OK',
     error: 'Error',
     waitingTeam: 'Waiting on',
-    done: 'Done ·'
+    done: 'Done ·',
+    queued: 'Queued',
+    cardBlocked: 'Blocked',
+    readyOne: '1 result ready',
+    readyMany: '{n} results ready',
+    readyElsewhereOne: '1 result ready in Bot Chat',
+    readyElsewhereMany: '{n} results ready in Bot Chat',
+    active: 'Active',
+    others: 'Also',
+    delegations: 'Delegations',
+    pending: 'Pending',
+    recalled: 'Recalled',
+    stalled: 'stalled',
+    states: { idle: 'idle', queued: 'queued', ready: 'ready', waiting: 'waiting', working: 'working', blocked: 'blocked', error: 'error', done: 'done' },
+    waitingReply: 'waiting for reply',
+    workingState: 'working',
+    doneState: 'done',
+    hint: 'Type /memoria to review memory',
+    showMore: 'Show status',
+    hideMore: 'Hide status'
   },
   es: {
     working: 'Cargando…',
@@ -21,7 +45,107 @@ const I18N = {
     blocked: 'Esperando tu OK',
     error: 'Error',
     waitingTeam: 'Esperando a',
-    done: 'Listo ·'
+    done: 'Listo ·',
+    queued: 'En cola',
+    cardBlocked: 'Bloqueado',
+    readyOne: '1 resultado listo',
+    readyMany: '{n} resultados listos',
+    readyElsewhereOne: '1 resultado listo en Bot Chat',
+    readyElsewhereMany: '{n} resultados listos en Bot Chat',
+    active: 'Activo',
+    others: 'También',
+    delegations: 'Delegaciones',
+    pending: 'Pendientes',
+    recalled: 'Recordadas',
+    stalled: 'sin avance',
+    states: { idle: 'libre', queued: 'en cola', ready: 'listo', waiting: 'esperando', working: 'trabajando', blocked: 'bloqueado', error: 'error', done: 'hecho' },
+    waitingReply: 'esperando respuesta',
+    workingState: 'trabajando',
+    doneState: 'listo',
+    hint: 'Escribe /memoria para ver la memoria',
+    showMore: 'Ver estado',
+    hideMore: 'Ocultar estado'
+  },
+  fr: {
+    working: 'En cours…',
+    thinking: 'Réflexion…',
+    blocked: 'En attente de ton accord',
+    error: 'Erreur',
+    waitingTeam: 'En attente de',
+    done: 'Terminé ·',
+    queued: 'En file',
+    cardBlocked: 'Bloqué',
+    readyOne: '1 résultat prêt',
+    readyMany: '{n} résultats prêts',
+    readyElsewhereOne: '1 résultat prêt dans Bot Chat',
+    readyElsewhereMany: '{n} résultats prêts dans Bot Chat',
+    active: 'Actif',
+    others: 'Aussi',
+    delegations: 'Délégations',
+    pending: 'En attente',
+    recalled: 'Rappelés',
+    stalled: 'sans progrès',
+    states: { idle: 'libre', queued: 'en file', ready: 'prêt', waiting: 'en attente', working: 'en cours', blocked: 'bloqué', error: 'erreur', done: 'terminé' },
+    waitingReply: 'en attente de réponse',
+    workingState: 'en cours',
+    doneState: 'terminé',
+    hint: 'Écris /botmemory pour voir la mémoire',
+    showMore: 'Voir l’état',
+    hideMore: 'Masquer l’état'
+  },
+  pt: {
+    working: 'Trabalhando…',
+    thinking: 'Pensando…',
+    blocked: 'Aguardando seu OK',
+    error: 'Erro',
+    waitingTeam: 'Aguardando',
+    done: 'Pronto ·',
+    queued: 'Na fila',
+    cardBlocked: 'Bloqueado',
+    readyOne: '1 resultado pronto',
+    readyMany: '{n} resultados prontos',
+    readyElsewhereOne: '1 resultado pronto no Bot Chat',
+    readyElsewhereMany: '{n} resultados prontos no Bot Chat',
+    active: 'Ativo',
+    others: 'Também',
+    delegations: 'Delegações',
+    pending: 'Pendentes',
+    recalled: 'Lembradas',
+    stalled: 'sem progresso',
+    states: { idle: 'livre', queued: 'na fila', ready: 'pronto', waiting: 'aguardando', working: 'trabalhando', blocked: 'bloqueado', error: 'erro', done: 'concluído' },
+    waitingReply: 'aguardando resposta',
+    workingState: 'trabalhando',
+    doneState: 'pronto',
+    hint: 'Digite /botmemory para ver a memória',
+    showMore: 'Ver estado',
+    hideMore: 'Ocultar estado'
+  },
+  de: {
+    working: 'Arbeitet…',
+    thinking: 'Denkt nach…',
+    blocked: 'Wartet auf dein OK',
+    error: 'Fehler',
+    waitingTeam: 'Wartet auf',
+    done: 'Fertig ·',
+    queued: 'In der Warteschlange',
+    cardBlocked: 'Blockiert',
+    readyOne: '1 Ergebnis bereit',
+    readyMany: '{n} Ergebnisse bereit',
+    readyElsewhereOne: '1 Ergebnis bereit in Bot Chat',
+    readyElsewhereMany: '{n} Ergebnisse bereit in Bot Chat',
+    active: 'Aktiv',
+    others: 'Außerdem',
+    delegations: 'Delegationen',
+    pending: 'Offen',
+    recalled: 'Erinnert',
+    stalled: 'keine Fortschritte',
+    states: { idle: 'frei', queued: 'in Warteschlange', ready: 'fertig', waiting: 'wartet', working: 'arbeitet', blocked: 'blockiert', error: 'Fehler', done: 'erledigt' },
+    waitingReply: 'wartet auf Antwort',
+    workingState: 'arbeitet',
+    doneState: 'fertig',
+    hint: 'Tippe /botmemory, um das Gedächtnis zu sehen',
+    showMore: 'Status anzeigen',
+    hideMore: 'Status ausblenden'
   }
 }
 const TOOL_LABELS = {
@@ -40,12 +164,39 @@ const TOOL_LABELS = {
     kanban_create: 'Asignando a un compañero', kanban_list: 'Revisando el tablero',
     kanban_show: 'Leyendo una tarjeta', kanban_complete: 'Cerrando una tarjeta',
     session_search: 'Consultando sesiones', memory: 'Actualizando memoria', clarify: 'Esperando tu OK'
+  },
+  fr: {
+    read_file: 'Lecture de fichiers', write_file: 'Enregistrement', patch: 'Modification d’un fichier',
+    search_files: 'Recherche dans le code', terminal: 'Exécution d’une commande', execute_code: 'Exécution d’un script',
+    web_search: 'Recherche sur le web', web_extract: 'Lecture d’une page', delegate_task: 'Coordination d’un assistant',
+    kanban_create: 'Attribution à un coéquipier', kanban_list: 'Consultation du tableau',
+    kanban_show: 'Lecture d’une carte', kanban_complete: 'Clôture d’une carte',
+    session_search: 'Consultation des sessions', memory: 'Mise à jour de la mémoire', clarify: 'En attente de ton accord'
+  },
+  pt: {
+    read_file: 'Lendo arquivos', write_file: 'Salvando alterações', patch: 'Editando um arquivo',
+    search_files: 'Buscando no código', terminal: 'Executando um comando', execute_code: 'Executando um script',
+    web_search: 'Buscando na web', web_extract: 'Lendo uma página', delegate_task: 'Coordenando um ajudante',
+    kanban_create: 'Atribuindo a um colega', kanban_list: 'Verificando o quadro',
+    kanban_show: 'Lendo um cartão', kanban_complete: 'Fechando um cartão',
+    session_search: 'Consultando sessões', memory: 'Atualizando a memória', clarify: 'Aguardando seu OK'
+  },
+  de: {
+    read_file: 'Dateien lesen', write_file: 'Änderungen speichern', patch: 'Datei bearbeiten',
+    search_files: 'Code durchsuchen', terminal: 'Befehl ausführen', execute_code: 'Skript ausführen',
+    web_search: 'Im Web suchen', web_extract: 'Webseite lesen', delegate_task: 'Helfer koordinieren',
+    kanban_create: 'Teammitglied zuweisen', kanban_list: 'Board prüfen',
+    kanban_show: 'Karte lesen', kanban_complete: 'Karte schließen',
+    session_search: 'Sitzungen durchsuchen', memory: 'Gedächtnis aktualisieren', clarify: 'Wartet auf dein OK'
   }
 }
 
+let userLang = ''
+
 function pickLang() {
-  const nav = typeof navigator !== 'undefined' ? String(navigator.language || '') : ''
-  return nav.toLowerCase().startsWith('es') ? 'es' : 'en'
+  if (I18N[userLang]) return userLang
+  const nav = typeof navigator !== 'undefined' ? String(navigator.language || '').toLowerCase().slice(0, 2) : ''
+  return I18N[nav] ? nav : 'en'
 }
 
 export function labelFor(lang, toolName) {
@@ -60,11 +211,43 @@ export function shortError(raw, maxLen = 68) {
   return first.length > maxLen ? `${first.slice(0, maxLen - 1).trimEnd()}…` : first
 }
 
+function stateText(labels, state) {
+  const raw = String(state || '')
+  return (labels && labels.states && labels.states[raw]) || raw
+}
+
+export function readyCount(ready, sessionId) {
+  const map = ready && typeof ready === 'object' ? ready : {}
+  if (sessionId) {
+    const ids = Array.isArray(map[sessionId]) ? map[sessionId] : []
+    return ids.length
+  }
+  return Object.values(map).reduce((n, ids) => n + (Array.isArray(ids) ? ids.length : 0), 0)
+}
+
 export function classifyPhase(lang, state) {
   const l = I18N[lang] ? lang : 'en'
   const t = I18N[l]
   const s = state || {}
-  if (!s.inBotChat) return { active: false, phase: 'idle', blocked: false, text: '' }
+  const panel = String(s.panel || '').trim()
+  const focused = String(s.focusedSession || '')
+  const total = readyCount(s.ready)
+  const mine = readyCount(s.ready, focused)
+  // Fase 3: a ready result is news even outside a Bot Chat session —
+  // the badge names Bot Chat, never a session it cannot attribute
+  // (wow 8). Counts only cover completions observed while the desktop
+  // app was running; the next turn in the session re-announces them.
+  if (!s.inBotChat) {
+    if (total > 0) {
+      return {
+        active: true,
+        phase: 'ready',
+        blocked: false,
+        text: total === 1 ? t.readyElsewhereOne : t.readyElsewhereMany.replace('{n}', String(total))
+      }
+    }
+    return { active: false, phase: 'idle', blocked: false, text: '' }
+  }
   if (s.blocked) {
     const detail = shortError(s.detail, 56)
     return {
@@ -83,12 +266,57 @@ export function classifyPhase(lang, state) {
       text: detail ? `${t.error}: ${detail}` : t.error
     }
   }
+  // The badge shows when idle: while a turn runs, the turn's offer
+  // announces the result instead (never injected mid-turn).
+  if (!s.busy && mine > 0) {
+    return {
+      active: true,
+      phase: 'ready',
+      blocked: false,
+      text: mine === 1 ? t.readyOne : t.readyMany.replace('{n}', String(mine))
+    }
+  }
+  if (!s.busy && s.cardBlocked) {
+    const detail = shortError(s.cardBlocked, 60)
+    return {
+      active: true,
+      phase: 'card_blocked',
+      blocked: false,
+      text: detail ? `${t.cardBlocked}: ${detail}` : t.cardBlocked
+    }
+  }
   if (s.teamWait) {
     return {
       active: true,
       phase: 'waiting_team',
       blocked: false,
       text: `${t.waitingTeam} ${s.teamWait}`
+    }
+  }
+  if (!s.busy && s.queued) {
+    return {
+      active: true,
+      phase: 'queued',
+      blocked: false,
+      text: `${t.queued} · ${s.queued}`
+    }
+  }
+  if (s.busy) {
+    const text = `${t.working} · ${s.activity || t.thinking}`
+    return {
+      active: true,
+      phase: 'working',
+      blocked: false,
+      text: panel ? `${text} · ${panel}` : text
+    }
+  }
+  if (s.working) {
+    const text = `${t.working} · ${s.working}`
+    return {
+      active: true,
+      phase: 'working',
+      blocked: false,
+      text: panel ? `${text} · ${panel}` : text
     }
   }
   if (s.notice && !s.busy) {
@@ -100,40 +328,201 @@ export function classifyPhase(lang, state) {
       text: detail ? `${t.done} ${detail}` : t.done
     }
   }
-  if (s.busy) {
-    return {
-      active: true,
-      phase: 'working',
-      blocked: false,
-      text: `${t.working} · ${s.activity || t.thinking}`
-    }
+  if (panel && s.inBotChat) {
+    return { active: true, phase: 'panel', blocked: false, text: panel }
   }
   return { active: false, phase: 'idle', blocked: false, text: '' }
 }
 
 export function applyTeamEvent(state, name, payload) {
-  const base = Object.assign({ teamWait: '', notice: '', activity: '', blocked: false, detail: '', error: '' }, state || {})
+  const base = Object.assign(
+    { teamWait: '', notice: '', activity: '', blocked: false, detail: '', error: '',
+      queued: '', working: '', ready: {}, cardBlocked: '', panel: '' },
+    state || {})
   const body = payload && typeof payload === 'object' ? payload : {}
   const bag = body.args && typeof body.args === 'object'
     ? body.args
     : (body.arguments && typeof body.arguments === 'object' ? body.arguments : body)
   const tool = String(body.name || body.tool_name || body.function_name || '')
   const lname = String(name || '').toLowerCase()
+  const taskId = String(body.task_id || body.taskId || body.id || '')
+  const assignee = String(body.assignee || bag.assignee || '').trim()
+  const sessionId = String(body.session_id || body.sessionId || '')
+  if (lname.includes('kanban_task_claimed') || lname.includes('task_claimed') || lname.includes('task.claimed')) {
+    return Object.assign({}, base, { queued: assignee || taskId, teamWait: '', notice: '' })
+  }
+  if (lname.includes('worker_spawned') || lname.includes('worker.spawned')) {
+    return Object.assign({}, base, { working: assignee || taskId, queued: '' })
+  }
   if (lname.includes('kanban_task_completed') || lname.includes('task.completed') || lname.includes('task_completed')) {
-    const summary = body.summary || body.result || body.message || ''
+    // Ready is a per-session set, deduplicated by task id. A completion
+    // without a session goes to the unattributed bucket (''): the badge
+    // then names Bot Chat, never a session it cannot prove (wow 8).
+    const key = taskId || String(body.summary || body.result || body.message || 'done')
+    const next = {}
+    for (const [sid, ids] of Object.entries(base.ready || {})) next[sid] = Array.isArray(ids) ? [...ids] : []
+    const bucket = next[sessionId] || []
+    if (!bucket.includes(key)) bucket.push(key)
+    next[sessionId] = bucket
+    const clear = (v) => (assignee && v === assignee) || (taskId && v === taskId) ? '' : v
     return Object.assign({}, base, {
-      teamWait: '', notice: String(summary || 'Done'), blocked: false, error: '', detail: ''
+      ready: next, teamWait: '', notice: '', blocked: false, error: '', detail: '',
+      queued: clear(base.queued), working: clear(base.working)
     })
   }
+  if (lname.includes('kanban_task_blocked') || lname.includes('task_blocked') || lname.includes('task.blocked')) {
+    const reason = String(body.reason || body.message || body.summary || '')
+    const text = taskId ? `${taskId}: ${reason}`.trim() : reason
+    const clear = (v) => (assignee && v === assignee) || (taskId && v === taskId) ? '' : v
+    return Object.assign({}, base, {
+      cardBlocked: text, teamWait: '', notice: '',
+      queued: clear(base.queued), working: clear(base.working)
+    })
+  }
+  if (lname.includes('bot-chat-status') || lname.includes('bot_chat_panel')) {
+    return Object.assign({}, base, { panel: String(body.panel || body.text || '') })
+  }
   if (tool === 'kanban_create' || lname === 'kanban_create') {
-    const who = String(body.assignee || bag.assignee || '').trim()
+    const who = assignee
     if (!who) return Object.assign({}, base)
     return Object.assign({}, base, { teamWait: who, notice: '', blocked: false, error: '' })
   }
   return null
 }
 
+const DELEGATION_STATE = {
+  en: {
+    stopped: 'stopped',
+    received: 'waiting for reply', queued: 'waiting for reply', waiting: 'waiting for reply',
+    working: 'working', blocked: 'blocked', ready: 'done', error: 'error', cancelled: 'cancelled'
+  },
+  es: {
+    stopped: 'detenida',
+    received: 'esperando respuesta', queued: 'esperando respuesta', waiting: 'esperando respuesta',
+    working: 'trabajando', blocked: 'bloqueado', ready: 'listo', error: 'error', cancelled: 'cancelado'
+  },
+  fr: {
+    stopped: 'arrêtée',
+    received: 'en attente de réponse', queued: 'en attente de réponse', waiting: 'en attente de réponse',
+    working: 'en cours', blocked: 'bloqué', ready: 'terminé', error: 'erreur', cancelled: 'annulé'
+  },
+  pt: {
+    stopped: 'interrompida',
+    received: 'aguardando resposta', queued: 'aguardando resposta', waiting: 'aguardando resposta',
+    working: 'trabalhando', blocked: 'bloqueado', ready: 'pronto', error: 'erro', cancelled: 'cancelado'
+  },
+  de: {
+    stopped: 'gestoppt',
+    received: 'wartet auf Antwort', queued: 'wartet auf Antwort', waiting: 'wartet auf Antwort',
+    working: 'arbeitet', blocked: 'blockiert', ready: 'fertig', error: 'Fehler', cancelled: 'abgebrochen'
+  }
+}
+const OPEN_STATUSES = { received: 1, queued: 1, working: 1, waiting: 1, blocked: 1 }
+
+export function formatElapsed(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (total < 60) return `${total}s`
+  const minutes = Math.floor(total / 60)
+  const secs = total % 60
+  if (minutes < 60) return `${minutes}m ${secs}s`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+export function delegationLine(item, lang) {
+  const row = item && typeof item === 'object' ? item : {}
+  const src = String(row.from || row.origin || 'Bot Chat').trim() || 'Bot Chat'
+  const dst = String(row.to || row.assignee || '').trim()
+  if (!dst) return ''
+  const l = I18N[lang] ? lang : 'en'
+  let key = String(row.state || row.status || 'waiting')
+  if (key === 'error' && row.reason) key = 'stopped'
+  const state = (DELEGATION_STATE[l] && DELEGATION_STATE[l][key]) || DELEGATION_STATE[l].waiting
+  let line = `${src} → ${dst}: ${state}`
+  if (row.stalled) line += ' · ' + I18N[l].stalled
+  return line
+}
+
+export function normalizeSnapshot(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {}
+  const bots = Array.isArray(src.bots) ? src.bots.filter(b => b && typeof b === 'object') : []
+  const delegations = Array.isArray(src.delegations) ? src.delegations.filter(d => d && typeof d === 'object') : []
+  const tasks = Array.isArray(src.tasks) ? src.tasks.filter(t => t && typeof t === 'object') : []
+  const pending = Array.isArray(src.pending) ? src.pending.map(p => String(p || '').trim()).filter(Boolean) : []
+  const recalled = Array.isArray(src.recalled) ? src.recalled.filter(r => r && typeof r === 'object') : []
+  const active = (src.active_bot && typeof src.active_bot === 'object')
+    ? src.active_bot
+    : (bots.find(b => b.role === 'active') || null)
+  return {
+    enabled: src.enabled !== false,
+    lang: I18N[src.lang] ? src.lang : '',
+    session_id: String(src.session_id || ''),
+    origin: String(src.origin || (active && active.name) || ''),
+    active_bot: active,
+    bots,
+    delegations,
+    tasks,
+    pending,
+    recalled,
+    context_tokens: Math.max(0, Math.floor(Number(src.context_tokens) || 0)),
+    stalled_after_seconds: Math.max(15, Math.floor(Number(src.stalled_after_seconds) || 120)),
+    hint: String(src.hint || '')
+  }
+}
+
+export function cardHasContent(snap) {
+  const s = normalizeSnapshot(snap)
+  if (!s.enabled) return false
+  return Boolean(
+    (s.active_bot && s.active_bot.name) ||
+    s.delegations.length || s.tasks.length || s.pending.length ||
+    s.recalled.length || s.context_tokens > 0 ||
+    s.bots.some(b => b && b.name)
+  )
+}
+
+export function buildCardModel(raw, lang) {
+  const s = normalizeSnapshot(raw)
+  // the language the user writes in (from the snapshot) wins over the browser locale
+  const l = s.lang || (I18N[lang] ? lang : 'en')
+  const t = I18N[l]
+  if (!s.enabled) {
+    return { visible: false, lang: l, labels: t, activeBot: null, others: [],
+      delegations: [], pending: [], recalled: [], tokens: 0, hint: '', hasStalled: false, summary: '' }
+  }
+  const activeBot = s.active_bot || null
+  const others = s.bots.filter(b => b && b.name && (!activeBot || b.name !== activeBot.name))
+  const delegations = s.delegations.map(d => {
+    const text = delegationLine(d, l)
+    const elapsed = formatElapsed(d.elapsed_seconds)
+    const note = String(d.note || '').trim()
+    return { text: note ? `${text} — ${note}` : text, line: text, elapsed, stalled: Boolean(d.stalled), title: String(d.title || ''), note }
+  }).filter(d => d.text)
+  const pending = s.pending.slice(0, 3)
+  const recalled = s.recalled.map(r => String(r.title || r.text || '').trim()).filter(Boolean).slice(0, 3)
+  const hasStalled = delegations.some(d => d.stalled) || s.tasks.some(task => task && task.stalled)
+  const bits = []
+  if (activeBot && activeBot.name) bits.push(activeBot.name)
+  if (delegations[0]) bits.push(delegations[0].line || delegations[0].text)
+  if (hasStalled) bits.push(t.stalled)
+  if (s.context_tokens > 0) bits.push(`${s.context_tokens} tok`)
+  return {
+    visible: cardHasContent(s),
+    lang: l,
+    labels: t,
+    activeBot,
+    others,
+    delegations,
+    pending,
+    recalled,
+    tokens: s.context_tokens,
+    hint: s.hint || t.hint,
+    hasStalled,
+    summary: bits.join(' · ')
+  }
+}
+
 export function canonicalIdsFrom(res, title = BOT_CHAT_TITLE) {
+
   const ids = new Set()
   const rows = Array.isArray(res && res.profiles) ? res.profiles : []
   for (const row of rows) {
@@ -148,39 +537,124 @@ export function canonicalIdsFrom(res, title = BOT_CHAT_TITLE) {
 }
 
 const $bar = atom({ active: false, phase: 'idle', blocked: false, text: '' })
+const $panel = atom({ enabled: false })
+const $open = atom(true)
+
 
 const DOT_COLOR = {
   working: '#38bdf8',
   waiting_ok: '#f59e0b',
   waiting_team: '#f59e0b',
+  queued: '#38bdf8',
+  ready: '#34d399',
+  card_blocked: '#f59e0b',
   done: '#34d399',
-  error: '#f87171'
+  error: '#f87171',
+  panel: '#38bdf8'
 }
 
 const BAR_STYLE = {
   display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 12px', margin: '0 8px 6px',
   borderRadius: '8px', fontSize: '12px', lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden',
-  textOverflow: 'ellipsis', color: 'var(--ui-text-secondary, #cbd5e1)',
-  background: 'var(--ui-surface-secondary, rgba(30,41,59,.65))',
-  border: '1px solid var(--ui-stroke-tertiary, rgba(148,163,184,.18))'
+  textOverflow: 'ellipsis', color: 'var(--ui-text-secondary, inherit)',
+  background: 'var(--ui-bg-secondary, rgba(127,127,127,.10))',
+  border: '1px solid var(--ui-stroke-tertiary, rgba(127,127,127,.25))'
+}
+
+const CARD_STYLE = {
+  display: 'flex', flexDirection: 'column', gap: '6px',
+  padding: '8px 12px 10px', margin: '0 8px 6px',
+  borderRadius: '8px', fontSize: '12px', lineHeight: 1.4,
+  color: 'var(--ui-text-secondary, inherit)',
+  background: 'var(--ui-bg-secondary, rgba(127,127,127,.10))',
+  border: '1px solid var(--ui-stroke-tertiary, rgba(127,127,127,.25))'
+}
+const MUTED = { color: 'var(--ui-text-tertiary, inherit)', fontSize: '11px' }
+const ROW = { display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 }
+const PILL = {
+  display: 'inline-flex', alignItems: 'center', gap: '4px',
+  padding: '1px 6px', borderRadius: '9999px', fontSize: '10px',
+  background: 'rgba(56,189,248,.12)', color: 'var(--ui-text-secondary, inherit)'
+}
+const WARN = { color: 'var(--ui-warning, #f59e0b)', fontSize: '11px' }
+
+function lineRow(text, extra, warn) {
+  return jsxs('div', { style: ROW, children: [
+    jsx('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, children: text }),
+    extra ? jsx('span', { style: warn ? WARN : MUTED, children: extra }) : null
+  ] })
 }
 
 function StatusBar() {
   const s = useValue($bar)
-  if (!s.active) return null
-  const dot = DOT_COLOR[s.phase] || DOT_COLOR.working
-  return jsxs('div', {
-    role: 'status', 'aria-live': 'polite', style: BAR_STYLE,
+  const panel = useValue($panel)
+  const open = useValue($open)
+  const model = buildCardModel(panel, pickLang())
+  if (!s.active && !model.visible) return null
+  const dot = DOT_COLOR[s.phase] || (model.hasStalled ? DOT_COLOR.waiting_ok : DOT_COLOR.panel)
+  const headline = s.active && s.text ? s.text : (model.summary || model.labels.showMore)
+  const canOpen = model.visible
+  const header = jsxs('div', {
+    role: 'status', 'aria-live': 'polite',
+    style: Object.assign({}, BAR_STYLE, { margin: 0, background: 'transparent', border: 'none', padding: 0, cursor: canOpen ? 'pointer' : 'default' }),
+    onClick: canOpen ? () => $open.set(!$open.get()) : undefined,
     children: [
       jsx('span', { style: { width: 8, height: 8, borderRadius: 9999, flexShrink: 0,
         background: dot, opacity: s.phase === 'working' ? 0.85 : 1 } }),
-      jsx('span', { children: s.text })
+      jsx('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: headline }),
+      canOpen ? jsx('span', { style: MUTED, children: open ? '▾' : '▸' }) : null
     ]
   })
+  if (!canOpen || !open) {
+    return jsx('div', { style: BAR_STYLE, children: header })
+  }
+  const kids = [header]
+  if (model.activeBot && model.activeBot.name) {
+    kids.push(jsxs('div', { style: ROW, children: [
+      jsx('span', { style: PILL, children: model.labels.active }),
+      jsx('strong', { style: { fontWeight: 600, color: 'var(--ui-text-primary, inherit)' }, children: model.activeBot.name }),
+      jsx('span', { style: MUTED, children: stateText(model.labels, model.activeBot.state) })
+    ] }))
+  }
+  for (const d of model.delegations) {
+    const extra = [d.elapsed, d.stalled ? model.labels.stalled : ''].filter(Boolean).join(' · ')
+    kids.push(lineRow(d.text, extra, d.stalled))
+  }
+  for (const bot of model.others) {
+    const state = stateText(model.labels, bot.state)
+    const extra = [formatElapsed(bot.elapsed_seconds), bot.stalled ? model.labels.stalled : bot.last_activity].filter(Boolean).join(' · ')
+    kids.push(lineRow(`${model.labels.others}: ${bot.name}${state ? ' · ' + state : ''}`, extra, Boolean(bot.stalled)))
+  }
+  if (model.pending.length) {
+    kids.push(jsx('div', { style: MUTED, children: `${model.labels.pending}: ${model.pending.join(' · ')}` }))
+  }
+  if (model.recalled.length) {
+    kids.push(jsx('div', { style: MUTED, children: `${model.labels.recalled}: ${model.recalled.join(' · ')}` }))
+  }
+  const foot = []
+  if (model.tokens > 0) foot.push(jsx('span', { key: 'tok', style: MUTED, children: `${model.tokens} tok` }))
+  if (model.hint) {
+    const composer = host && host.composer && typeof host.composer.insertText === 'function'
+    foot.push(jsx(composer ? 'button' : 'span', {
+      key: 'hint',
+      type: composer ? 'button' : undefined,
+      style: Object.assign({}, MUTED, composer ? { cursor: 'pointer', background: 'none', border: 'none', padding: 0, color: 'var(--ui-accent, #38bdf8)' } : {}),
+      onClick: composer ? (ev) => {
+        if (ev && ev.stopPropagation) ev.stopPropagation()
+        const sid = (host.state && host.state.focusedStoredSessionId && host.state.focusedStoredSessionId.get && host.state.focusedStoredSessionId.get()) || null
+        try {
+          const ret = host.composer.insertText(sid, '/memoria', { mode: 'prefix' })
+          if (ret && typeof ret.catch === 'function') ret.catch(() => {})
+        } catch (_) {}
+      } : undefined,
+      children: model.hint
+    }))
+  }
+  if (foot.length) kids.push(jsxs('div', { style: Object.assign({}, ROW, { marginTop: 2 }), children: foot }))
+  return jsxs('div', { style: CARD_STYLE, children: kids })
 }
 
 function setup(ctx) {
-  const lang = pickLang()
   const ids = new Set()
   let inBotChat = false
   let busy = false
@@ -196,9 +670,21 @@ function setup(ctx) {
 
   const settings = host && host.settings
   const state = (host && host.state) || {}
+  // Fase 3: background-task state, tracked across sessions so the
+  // "N results ready" badge works with no turn active. `ready` maps
+  // session id -> task ids ('' = unattributed: the badge then names
+  // Bot Chat, never a session it cannot prove).
+  let focused = ''
+  let queued = ''
+  let working = ''
+  let ready = {}
+  let cardBlocked = ''
 
   function render() {
-    $bar.set(classifyPhase(lang, { inBotChat, busy, activity, blocked, detail, error, teamWait, notice }))
+    $bar.set(classifyPhase(pickLang(), {
+      inBotChat, busy, activity, blocked, detail, error, teamWait, notice,
+      queued, working, ready, cardBlocked, focusedSession: focused
+    }))
   }
 
   async function applyReasoning(on) {
@@ -229,7 +715,7 @@ function setup(ctx) {
     if (disposed) return
     const seq = ++syncSeq
     const route = (state.routeView && state.routeView.get && state.routeView.get()) || 'chat'
-    const focused = String((state.focusedStoredSessionId && state.focusedStoredSessionId.get &&
+    focused = String((state.focusedStoredSessionId && state.focusedStoredSessionId.get &&
       state.focusedStoredSessionId.get()) || '').trim()
     let hit = route === 'chat' && focused !== '' && ids.has(focused)
     if (!hit && route === 'chat' && focused) {
@@ -255,6 +741,73 @@ function setup(ctx) {
   ctx.register({ id: 'bot-chat-agent-status', area: COMPOSER_AREAS.top, order: 5,
     render: () => jsx(StatusBar, {}) })
 
+  let stopPoll = () => {}
+  if (ctx && typeof ctx.rest === 'function') {
+    // Panteón: the Python half never imports a private core module, so it asks THIS half to run the
+    // stock `profiles.create` RPC, but only after the user said yes in the chat. Each request is
+    // answered once; a profile that already exists counts as done.
+    const running = new Set()
+    const runRequests = async (list) => {
+      if (!Array.isArray(list) || !host || typeof host.request !== 'function') return
+      for (const r of list) {
+        if (!r || !r.id || !r.name || running.has(r.id)) continue
+        running.add(r.id)
+        let ok = true
+        let error = ''
+        // The stock clone can fail transiently on a brand-new install (it copies the skills tree while
+        // the first sync is still writing it: ENOENT on a file that is there a moment later). Retry a
+        // couple of times before telling the user it failed; "already exists" counts as done.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await host.request('profiles.create', {
+              name: String(r.name), description: String(r.description || ''),
+              clone_from: String(r.clone_from || 'default'), soul: String(r.soul || ''), no_alias: true
+            })
+            ok = true
+            error = ''
+            break
+          } catch (e) {
+            error = String((e && e.message) || e || '').slice(0, 200)
+            ok = /exist/i.test(error)
+            if (ok) break
+            if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500))
+          }
+        }
+        if (ok && r.ui_meta && typeof r.ui_meta === 'object') {
+          // make it a real Bot Mode bot (same ui_meta the Bots panel writes), best effort
+          try { await host.request('profiles.configure', { name: String(r.name), ui_meta: { 'hermes-bots': r.ui_meta } }) } catch (_) { /* profile still exists */ }
+        }
+        try { await ctx.rest('/panteon/result', { method: 'POST', body: { id: r.id, ok, error: ok ? '' : error } }) } catch (_) { /* retried next tick */ }
+        if (!ok) running.delete(r.id)
+      }
+    }
+    // If the Python half is gone (plugin removed or disabled while this Desktop half is still
+    // installed) every poll is a 404. Back off to one probe a minute instead of one every 3 s.
+    let misses = 0
+    let skipped = 0
+    const tick = () => {
+      if (misses >= 3 && ++skipped < 20) return
+      skipped = 0
+      Promise.resolve(ctx.rest('/panteon/hello', { method: 'POST', body: {}, timeoutMs: 2000 }))
+        .then((h) => { if (!disposed && h) runRequests(h.panteon_requests) }).catch(() => {})
+      Promise.resolve(ctx.rest('/status', { timeoutMs: 2000 })).then((raw) => {
+        if (disposed) return
+        misses = 0
+        const snap = normalizeSnapshot(raw)
+        if (snap.lang) userLang = snap.lang
+        $panel.set(snap)
+        render()
+      }).catch(() => { misses += 1 /* fail-open: keep the last snapshot */ })
+    }
+    tick()
+    if (typeof ctx.setInterval === 'function') {
+      stopPoll = ctx.setInterval(tick, 3000) || (() => {})
+    } else {
+      const id = setInterval(tick, 3000)
+      stopPoll = () => clearInterval(id)
+    }
+  }
+
   const unsubs = []
   const busyAtom = state.busy || state.awaitingResponse
   if (busyAtom && typeof busyAtom.get === 'function') {
@@ -262,7 +815,15 @@ function setup(ctx) {
   }
   if (busyAtom && busyAtom.subscribe) {
     unsubs.push(busyAtom.subscribe(v => {
+      const wasBusy = busy
       busy = Boolean(v)
+      if (busy && !wasBusy && focused) {
+        // A turn just started in the focused session: it will announce
+        // the ready results through the offer, so the badge hands over.
+        const next = { ...ready }
+        delete next[focused]
+        ready = next
+      }
       if (busy) { activity = ''; blocked = false; detail = ''; error = ''; notice = '' }
       render()
     }))
@@ -272,20 +833,51 @@ function setup(ctx) {
   }
   if (typeof ctx.onEvent === 'function') {
     unsubs.push(ctx.onEvent('*', (ev, maybePayload) => {
-      if (!inBotChat) return
       const isObj = ev && typeof ev === 'object'
-      if (isObj && ev.session_id && ids.size > 0 && !ids.has(String(ev.session_id))) return
       const name = String((isObj ? ev.type : ev) || '').toLowerCase()
       const payload = isObj ? (ev.payload || ev) : maybePayload
+      // Fase 3: kanban lifecycle events are tracked even outside a Bot
+      // Chat session — that is how the "N results ready" badge works
+      // with no turn active. Attribution uses the event session when
+      // it names one, else the unattributed bucket (never a guess).
+      if (name.includes('kanban_task_') || name.includes('worker_spawned') ||
+          name.includes('task_completed') || name.includes('task.completed') ||
+          name.includes('task_blocked') || name.includes('task.blocked')) {
+        const merged = (payload && typeof payload === 'object') ? { ...payload } : {}
+        if (!merged.session_id && !merged.sessionId && isObj && ev.session_id) {
+          merged.session_id = String(ev.session_id)
+        }
+        const next = applyTeamEvent(
+          { teamWait, notice, queued, working, ready, cardBlocked }, name, merged)
+        if (next) {
+          teamWait = next.teamWait || ''
+          notice = next.notice || ''
+          queued = next.queued || ''
+          working = next.working || ''
+          ready = next.ready || {}
+          cardBlocked = next.cardBlocked || ''
+          blocked = false
+          detail = ''
+          error = ''
+          render()
+        }
+        return
+      }
+      if (!inBotChat) return
+      if (isObj && ev.session_id && ids.size > 0 && !ids.has(String(ev.session_id))) return
       const tool = payload && (payload.name || payload.tool_name || payload.function_name)
       const resStr = payload && typeof payload.result === 'string' ? payload.result : ''
       const errRaw = payload && (payload.error || (payload.status === 'error' ? payload.message : ''))
       const msg = String((payload && (payload.message || payload.error || payload.result_text || payload.summary || resStr)) || '')
-      const team = applyTeamEvent({ teamWait, notice }, name, payload || {})
+      const team = applyTeamEvent({ teamWait, notice, queued, working, ready, cardBlocked }, name, payload || {})
       if (team && !(msg.includes('[bot-chat-agent]') || name.includes('approval') || name.includes('permission') || tool === 'clarify')) {
         teamWait = team.teamWait || ''
         notice = team.notice || ''
-        if (tool) activity = labelFor(lang, tool)
+        queued = team.queued || ''
+        working = team.working || ''
+        ready = team.ready || {}
+        cardBlocked = team.cardBlocked || ''
+        if (tool) activity = labelFor(pickLang(), tool)
         blocked = false
         detail = ''
         error = ''
@@ -309,7 +901,7 @@ function setup(ctx) {
         blocked = false
         detail = ''
         error = ''
-        activity = labelFor(lang, tool)
+        activity = labelFor(pickLang(), tool)
         render()
       }
     }))
@@ -319,16 +911,18 @@ function setup(ctx) {
 
   ctx.onDispose(() => {
     disposed = true
+    try { stopPoll() } catch (_) {}
     for (const u of unsubs) if (typeof u === 'function') u()
     applyReasoning(false)
     $bar.set({ active: false, phase: 'idle', blocked: false, text: '' })
+    $panel.set({ enabled: false })
   })
 }
 
 export default {
   id: 'bot-chat-agent',
-  name: 'Bot Chat Agent',
-  description: 'Bot Chat only: Working, Waiting for your OK, Waiting on a teammate, Done, or Error. Reasoning collapsed by default.',
+  name: 'Hermes Bots',
+  description: 'Bot Chat only: Working, Queued, Waiting for your OK, Waiting on a teammate, Ready (results waiting), Blocked card, Done, or Error. Reasoning collapsed by default.',
   defaultEnabled: true,
   register(ctx) { setup(ctx) }
 }
